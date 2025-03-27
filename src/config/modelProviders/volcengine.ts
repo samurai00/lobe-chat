@@ -9,7 +9,7 @@ const Doubao: ModelProviderCard = {
   modelsUrl: 'https://www.volcengine.com/docs/82379/1330310',
   name: 'Volcengine',
   settings: {
-    disableBrowserRequest: true, // CORS error
+    disableBrowserRequest: false, // CORS error
     proxyUrl: {
       placeholder: 'https://ark.cn-beijing.volces.com/api/v3',
     },
