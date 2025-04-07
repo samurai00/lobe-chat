@@ -332,7 +332,7 @@ const OpenRouter: ModelProviderCard = {
   settings: {
     // OpenRouter don't support browser request
     // https://github.com/lobehub/lobe-chat/issues/5900
-    disableBrowserRequest: true,
+    disableBrowserRequest: false,
 
     proxyUrl: {
       placeholder: 'https://openrouter.ai/api/v1',
