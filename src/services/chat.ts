@@ -641,7 +641,9 @@ class ChatService {
       throw AgentRuntimeError.createError(ChatErrorType.InvalidAccessCode);
     }
 
-    return agentRuntime.chat(data, { signal: params.signal });
+    const userId = userProfileSelectors.userId(useUserStore.getState());
+
+    return agentRuntime.chat(data, { signal: params.signal, user: userId });
   };
 
   /**
