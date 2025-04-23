@@ -1,3 +1,4 @@
+import Anthropic from '@anthropic-ai/sdk';
 import type { PartialDeep } from 'type-fest';
 
 import { ModelTokensUsage, ToolFunction } from '@/types/message';
@@ -29,6 +30,7 @@ interface UserMessageContentPartThinking {
   type: 'thinking';
 }
 interface UserMessageContentPartText {
+  cache_control?: Anthropic.CacheControlEphemeral | null;
   text: string;
   type: 'text';
 }

@@ -212,6 +212,7 @@ export type ExtendParamsType =
   | 'reasoningEffort'
   | 'gpt5ReasoningEffort'
   | 'textVerbosity'
+  | 'supportContextCaching'
   | 'thinking'
   | 'thinkingBudget';
 

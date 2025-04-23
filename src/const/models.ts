@@ -54,6 +54,9 @@ export const contextCachingModels = new Set([
   'claude-3-5-sonnet-20240620',
   'claude-3-5-haiku-latest',
   'claude-3-5-haiku-20241022',
+  'anthropic/claude-3.7-sonnet',
+  'anthropic/claude-sonnet-4',
+  'anthropic/claude-opus-4',
 ]);
 
 export const thinkingWithToolClaudeModels = new Set([
@@ -63,4 +66,7 @@ export const thinkingWithToolClaudeModels = new Set([
   'claude-sonnet-4-20250514',
   'claude-3-7-sonnet-latest',
   'claude-3-7-sonnet-20250219',
+  'anthropic/claude-3.7-sonnet',
+  'anthropic/claude-sonnet-4',
+  'anthropic/claude-opus-4',
 ]);
