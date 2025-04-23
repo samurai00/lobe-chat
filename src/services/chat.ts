@@ -231,6 +231,10 @@ class ChatService {
           type: 'enabled',
         };
       }
+
+      if (modelExtendParams!.includes('supportContextCaching')) {
+        extendParams.enabledContextCaching = true;
+      }
       if (
         modelExtendParams!.includes('disableContextCaching') &&
         chatConfig.disableContextCaching
