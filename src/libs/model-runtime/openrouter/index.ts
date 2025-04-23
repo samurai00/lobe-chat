@@ -14,7 +14,7 @@ export const LobeOpenRouterAI = LobeOpenAICompatibleFactory({
   baseURL: 'https://openrouter.ai/api/v1',
   chatCompletion: {
     handlePayload: (payload) => {
-      const { messages, thinking, enabledContextCaching } = payload;
+      const { messages, thinking, enabledContextCaching, ...restPayload } = payload;
 
       const convertedMessages = buildOpenRouterMessages(messages, { enabledContextCaching });
 
@@ -26,7 +26,7 @@ export const LobeOpenRouterAI = LobeOpenAICompatibleFactory({
       }
 
       return {
-        ...payload,
+        ...restPayload,
         messages: convertedMessages,
         model: payload.enabledSearch ? `${payload.model}:online` : payload.model,
         reasoning,
