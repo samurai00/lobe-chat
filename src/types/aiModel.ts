@@ -147,7 +147,8 @@ export type ExtendParamsType =
   | 'reasoningBudgetToken'
   | 'enableReasoning'
   | 'disableContextCaching'
-  | 'reasoningEffort';
+  | 'reasoningEffort'
+  | 'supportContextCaching';
 
 export interface AiModelSettings {
   extendParams?: ExtendParamsType[];

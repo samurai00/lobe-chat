@@ -2,6 +2,7 @@ import type { ChatModelCard } from '@/types/llm';
 
 import { ModelProvider } from '../types';
 import { createOpenAICompatibleRuntime } from '../utils/openaiCompatibleFactory';
+import { buildOpenRouterMessages } from '../utils/openrouterHelpers';
 import { OpenRouterModelCard, OpenRouterModelExtraInfo, OpenRouterReasoning } from './type';
 
 const formatPrice = (price: string) => {
@@ -13,7 +14,9 @@ export const LobeOpenRouterAI = createOpenAICompatibleRuntime({
   baseURL: 'https://openrouter.ai/api/v1',
   chatCompletion: {
     handlePayload: (payload) => {
-      const { thinking } = payload;
+      const { messages, thinking, enabledContextCaching, ...restPayload } = payload;
+
+      const convertedMessages = buildOpenRouterMessages(messages, { enabledContextCaching });
 
       let reasoning: OpenRouterReasoning = {};
       if (thinking?.type === 'enabled') {
@@ -23,7 +26,8 @@ export const LobeOpenRouterAI = createOpenAICompatibleRuntime({
       }
 
       return {
-        ...payload,
+        ...restPayload,
+        messages: convertedMessages,
         model: payload.enabledSearch ? `${payload.model}:online` : payload.model,
         reasoning,
         stream: payload.stream ?? true,
