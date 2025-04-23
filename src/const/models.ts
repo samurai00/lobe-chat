@@ -23,6 +23,10 @@ export const contextCachingModels = new Set([
   'claude-3-5-sonnet-20240620',
   'claude-3-5-haiku-latest',
   'claude-3-5-haiku-20241022',
+  'anthropic/claude-3.7-sonnet',
+  'google/gemini-2.5-flash-preview',
+  'google/gemini-2.5-flash-preview:thinking',
+  'google/gemini-2.5-pro-preview-03-25',
 ]);
 
 export const thinkingWithToolClaudeModels = new Set([
