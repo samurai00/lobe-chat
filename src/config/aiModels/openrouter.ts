@@ -192,9 +192,6 @@ const openrouterChatModels: AIChatModelCard[] = [
       input: 1.25,
       output: 10,
     },
-    settings: {
-      extendParams: ['disableContextCaching', 'supportContextCaching'],
-    },
     type: 'chat',
   },
   {
@@ -265,9 +262,6 @@ const openrouterChatModels: AIChatModelCard[] = [
       input: 0.15,
       output: 0.6,
     },
-    settings: {
-      extendParams: ['disableContextCaching', 'supportContextCaching'],
-    },
     type: 'chat',
   },
   {
@@ -287,12 +281,7 @@ const openrouterChatModels: AIChatModelCard[] = [
       output: 3.5,
     },
     settings: {
-      extendParams: [
-        'disableContextCaching',
-        'supportContextCaching',
-        'enableReasoning',
-        'reasoningBudgetToken',
-      ],
+      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
     },
     type: 'chat',
   },
