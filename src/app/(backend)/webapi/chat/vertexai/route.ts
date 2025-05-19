@@ -22,11 +22,16 @@ export const POST = checkAuth(async (req: Request, { jwtPayload }) =>
       const credentials = safeParseJSON(googleAuthStr);
       const googleAuthOptions = credentials ? { credentials } : undefined;
 
-      const instance = LobeVertexAI.initFromVertexAI({
-        googleAuthOptions,
-        location: process.env.VERTEXAI_LOCATION,
-        project: !!credentials?.project_id ? credentials?.project_id : process.env.VERTEXAI_PROJECT,
-      });
+      const instance = LobeVertexAI.initFromVertexAI(
+        {
+          googleAuthOptions,
+          location: process.env.VERTEXAI_LOCATION,
+          project: !!credentials?.project_id
+            ? credentials?.project_id
+            : process.env.VERTEXAI_PROJECT,
+        },
+        jwtPayload.baseURL,
+      );
 
       return new AgentRuntime(instance);
     },

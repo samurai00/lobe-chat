@@ -7,12 +7,15 @@ import { AgentRuntimeError } from '../utils/createError';
 const DEFAULT_VERTEXAI_LOCATION = 'us-central1';
 
 export class LobeVertexAI extends LobeGoogleAI {
-  static initFromVertexAI(params?: GoogleGenAIOptions) {
+  static initFromVertexAI(params?: GoogleGenAIOptions, baseURL?: string) {
     try {
+      const httpOptions = baseURL ? { baseUrl: baseURL } : undefined;
+
       // 使用 Vertex AI 时，需要把环境变量 GOOGLE_API_KEY 删除，
       // 或者设置一个值，不能是空字符串。`GOOGLE_API_KEY=` 这样会导致 GoogleGenAI 内 apiKey 设置不正确
       const client = new GoogleGenAI({
         ...params,
+        httpOptions,
         location: params?.location ?? DEFAULT_VERTEXAI_LOCATION, // @google/genai 不传 location 会报错
         vertexai: true,
       });

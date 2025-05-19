@@ -11,6 +11,9 @@ const VertexAI: ModelProviderCard = {
   name: 'Vertex AI',
   settings: {
     disableBrowserRequest: true,
+    proxyUrl: {
+      placeholder: '',
+    },
     showModelFetcher: false,
     smoothing: {
       text: true,
