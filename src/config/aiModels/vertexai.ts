@@ -20,6 +20,33 @@ const vertexaiChatModels: AIChatModelCard[] = [
       output: 10, // prompts <= 200k tokens
     },
     releasedAt: '2025-05-06',
+    settings: {
+      searchImpl: 'params',
+      searchProvider: 'google',
+    },
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: true,
+      reasoning: true,
+      vision: true,
+    },
+    contextWindowTokens: 1_048_576 + 65_536,
+    description: 'Gemini 2.5 Flash Preview 是 Google 性价比最高的模型，提供全面的功能。',
+    displayName: 'Gemini 2.5 Flash Preview 05-20',
+    enabled: true,
+    id: 'gemini-2.5-flash-preview-05-20',
+    maxOutput: 65_536,
+    pricing: {
+      input: 0.15,
+      output: 3.5, // Thinking
+    },
+    releasedAt: '2025-05-20',
+    settings: {
+      searchImpl: 'params',
+      searchProvider: 'google',
+    },
     type: 'chat',
   },
   {
@@ -39,6 +66,10 @@ const vertexaiChatModels: AIChatModelCard[] = [
       output: 10, // prompts <= 200k tokens
     },
     releasedAt: '2025-04-09',
+    settings: {
+      searchImpl: 'params',
+      searchProvider: 'google',
+    },
     type: 'chat',
   },
   {
@@ -58,6 +89,10 @@ const vertexaiChatModels: AIChatModelCard[] = [
       output: 3.5, // Thinking
     },
     releasedAt: '2025-04-17',
+    settings: {
+      searchImpl: 'params',
+      searchProvider: 'google',
+    },
     type: 'chat',
   },
   {
