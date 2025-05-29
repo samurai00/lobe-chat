@@ -13,7 +13,7 @@ export interface AiHubMixModelCard {
   owned_by: string;
 }
 
-const baseURL = 'https://api.aihubmix.com';
+const baseURL = process.env.AIHUBMIX_BASE_URL ?? 'https://api.aihubmix.com';
 
 export const params: CreateRouterRuntimeOptions = {
   debug: {
