@@ -111,18 +111,21 @@ export class LobeGoogleAI implements LobeRuntimeAI {
       const payload = this.buildPayload(rawPayload);
       const { model, thinking } = payload;
 
+      const thinkingBudget =
+        thinking?.type === 'enabled'
+          ? Math.min(thinking.budget_tokens, 24_576)
+          : thinking?.type === 'disabled'
+            ? 0
+            : undefined;
+      // Vertex AI thinkingBudget 为 0 时，includeThoughts 不能为 true
+      const includeThoughts =
+        thinkingBudget === 0 || !(model.includes('-2.5-') || model.includes('thinking'))
+          ? undefined
+          : true;
+
       const thinkingConfig: ThinkingConfig = {
-        includeThoughts:
-          thinking?.type === 'enabled' ||
-          (!thinking && model && (model.includes('-2.5-') || model.includes('thinking')))
-            ? true
-            : undefined,
-        thinkingBudget:
-          thinking?.type === 'enabled'
-            ? Math.min(thinking.budget_tokens, 24_576)
-            : thinking?.type === 'disabled'
-              ? 0
-              : undefined,
+        includeThoughts,
+        thinkingBudget,
       };
 
       const contents = await this.buildGoogleMessages(payload.messages);
