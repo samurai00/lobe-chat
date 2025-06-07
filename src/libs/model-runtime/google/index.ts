@@ -117,28 +117,31 @@ export class LobeGoogleAI implements LobeRuntimeAI {
       const payload = this.buildPayload(rawPayload);
       const { model, thinking } = payload;
 
-      const thinkingConfig: ThinkingConfig = {
-        includeThoughts:
-          thinking?.type === 'enabled' ||
-          (!thinking && model && (model.includes('-2.5-') || model.includes('thinking')))
-            ? true
-            : undefined,
-        thinkingBudget:
-          thinking?.type === 'enabled'
-            ? (() => {
-                const budget = thinking.budget_tokens;
-                if (model.includes('-2.5-flash')) {
-                  return Math.min(budget, 24_576);
-                } else if (model.includes('-2.5-pro')) {
-                  return Math.max(128, Math.min(budget, 32_768));
-                }
+      const thinkingBudget =
+        thinking?.type === 'enabled'
+          ? (() => {
+              const budget = thinking.budget_tokens;
+              if (model.includes('-2.5-flash')) {
                 return Math.min(budget, 24_576);
-              })()
-            : thinking?.type === 'disabled'
-              ? model.includes('-2.5-pro')
-                ? 128
-                : 0
-              : undefined,
+              } else if (model.includes('-2.5-pro')) {
+                return Math.max(128, Math.min(budget, 32_768));
+              }
+              return Math.min(budget, 24_576);
+            })()
+          : thinking?.type === 'disabled'
+            ? model.includes('-2.5-pro')
+              ? 128
+              : 0
+            : undefined;
+      // Vertex AI thinkingBudget 为 0 时，includeThoughts 不能为 true
+      const includeThoughts =
+        thinkingBudget === 0 || !(model.includes('-2.5-') || model.includes('thinking'))
+          ? undefined
+          : true;
+
+      const thinkingConfig: ThinkingConfig = {
+        includeThoughts,
+        thinkingBudget,
       };
 
       const contents = await this.buildGoogleMessages(payload.messages);

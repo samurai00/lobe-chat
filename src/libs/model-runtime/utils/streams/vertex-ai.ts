@@ -100,7 +100,7 @@ const transformVertexAIStream = (
     const { groundingChunks, webSearchQueries } = candidate.groundingMetadata ?? {};
     if (groundingChunks) {
       return [
-        !!part?.text ? { data: part.text, id: context?.id, type: textDataType } : undefined,
+        !!part?.text ? { data: part.text, id: context?.id, type: 'text' } : undefined,
         {
           data: {
             citations: groundingChunks?.map((chunk) => ({
