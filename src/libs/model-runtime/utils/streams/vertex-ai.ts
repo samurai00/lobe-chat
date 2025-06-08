@@ -97,9 +97,8 @@ const transformVertexAIStream = (
     }
 
     // return the grounding
-    if (candidate.groundingMetadata) {
-      const { webSearchQueries, groundingChunks } = candidate.groundingMetadata;
-
+    const { groundingChunks, webSearchQueries } = candidate.groundingMetadata ?? {};
+    if (groundingChunks) {
       return [
         !!part?.text ? { data: part.text, id: context?.id, type: textDataType } : undefined,
         {
