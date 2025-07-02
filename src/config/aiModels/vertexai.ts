@@ -6,6 +6,7 @@ const vertexaiChatModels: AIChatModelCard[] = [
     abilities: {
       functionCall: true,
       reasoning: true,
+      search: true,
       vision: true,
     },
     contextWindowTokens: 1_048_576 + 65_536,
@@ -23,6 +24,8 @@ const vertexaiChatModels: AIChatModelCard[] = [
     releasedAt: '2025-06-17',
     settings: {
       extendParams: ['thinkingBudget'],
+      searchImpl: 'params',
+      searchProvider: 'google',
     },
     type: 'chat',
   },
@@ -68,6 +71,7 @@ const vertexaiChatModels: AIChatModelCard[] = [
     abilities: {
       functionCall: true,
       reasoning: true,
+      search: true,
       vision: true,
     },
     contextWindowTokens: 1_048_576 + 65_536,
@@ -84,6 +88,8 @@ const vertexaiChatModels: AIChatModelCard[] = [
     releasedAt: '2025-06-17',
     settings: {
       extendParams: ['thinkingBudget'],
+      searchImpl: 'params',
+      searchProvider: 'google',
     },
     type: 'chat',
   },
@@ -124,6 +130,8 @@ const vertexaiChatModels: AIChatModelCard[] = [
     releasedAt: '2025-06-17',
     settings: {
       extendParams: ['thinkingBudget'],
+      searchImpl: 'params',
+      searchProvider: 'google',
     },
     type: 'chat',
   },
