@@ -150,6 +150,7 @@ export type ExtendParamsType =
   | 'enableReasoning'
   | 'disableContextCaching'
   | 'reasoningEffort'
+  | 'supportContextCaching'
   | 'thinking'
   | 'thinkingBudget';
 
