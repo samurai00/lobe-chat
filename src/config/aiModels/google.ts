@@ -120,6 +120,7 @@ const googleChatModels: AIChatModelCard[] = [
     id: 'gemini-2.5-flash:free',
     maxOutput: 65_536,
     pricing: {
+      cachedInput: 0.075,
       input: 0.3,
       output: 2.5,
     },
