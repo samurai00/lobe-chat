@@ -47,7 +47,8 @@ async function createImageTask(payload: CreateImagePayload, apiKey: string): Pro
   const { model, params } = payload;
   // I can only say that the design of Alibaba Cloud's API is really bad; each model has a different endpoint path.
   const modelType = getModelType(model);
-  const endpoint = `https://dashscope.aliyuncs.com/api/v1/services/aigc/${modelType}/image-synthesis`;
+  const qwenBaseUrl = process.env.QWEN_BASE_URL ?? 'https://dashscope.aliyuncs.com';
+  const endpoint = `${qwenBaseUrl}/api/v1/services/aigc/${modelType}/image-synthesis`;
   if (!endpoint) {
     throw new Error(`No endpoint configured for model type: ${modelType}`);
   }
