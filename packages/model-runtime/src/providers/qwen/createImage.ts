@@ -170,7 +170,8 @@ async function createImageEdit(
  * Query the status of an image generation task
  */
 async function queryTaskStatus(taskId: string, apiKey: string): Promise<QwenImageTaskResponse> {
-  const endpoint = `https://dashscope.aliyuncs.com/api/v1/tasks/${taskId}`;
+  const qwenBaseUrl = process.env.QWEN_BASE_URL ?? 'https://dashscope.aliyuncs.com';
+  const endpoint = `${qwenBaseUrl}/api/v1/tasks/${taskId}`;
 
   log('Querying task status for: %s', taskId);
 
