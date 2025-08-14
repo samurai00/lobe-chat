@@ -1306,6 +1306,29 @@ const qwenChatModels: AIChatModelCard[] = [
 const qwenImageModels: AIImageModelCard[] = [
   {
     description:
+      '通义千问-文生图模型（Qwen-Image）是一款通用图像生成模型，支持多种艺术风格，尤其擅长复杂文本渲染，特别是中英文文本渲染。',
+    displayName: 'Qwen Image',
+    enabled: true,
+    id: 'qwen-image',
+    organization: 'Qwen',
+    parameters: {
+      prompt: {
+        default: '',
+      },
+      size: {
+        default: '1328x1328',
+        enum: ['1664x928', '1472x1140', '1328x1328', '1140x1472', '928x1664'],
+      },
+    },
+    pricing: {
+      currency: 'CNY',
+      units: [{ name: 'imageGeneration', rate: 0.25, strategy: 'fixed', unit: 'image' }],
+    },
+    releasedAt: '2025-08-13',
+    type: 'image',
+  },
+  {
+    description:
       '万相2.2极速版，当前最新模型。在创意性、稳定性、写实质感上全面升级，生成速度快，性价比高。',
     displayName: 'Wanxiang2.2 T2I Flash',
     enabled: true,
