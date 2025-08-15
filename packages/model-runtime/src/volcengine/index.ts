@@ -1,4 +1,5 @@
 import { ModelProvider } from '../types';
+import { CreateImagePayload, CreateImageResponse } from '../types/image';
 import { MODEL_LIST_CONFIGS, processModelList } from '../utils/modelParse';
 import { createOpenAICompatibleRuntime } from '../utils/openaiCompatibleFactory';
 
@@ -13,7 +14,7 @@ export interface VolcengineModelCard {
   id: string;
 }
 
-export const LobeVolcengineAI = createOpenAICompatibleRuntime({
+const LobeVolcengineAIBase = createOpenAICompatibleRuntime({
   baseURL: 'https://ark.cn-beijing.volces.com/api/v3',
   chatCompletion: {
     handlePayload: (payload) => {
@@ -41,3 +42,15 @@ export const LobeVolcengineAI = createOpenAICompatibleRuntime({
   },
   provider: ModelProvider.Volcengine,
 });
+
+export class LobeVolcengineAI extends LobeVolcengineAIBase {
+  async createImage(payload: CreateImagePayload): Promise<CreateImageResponse> {
+    return super.createImage({
+      ...payload,
+      params: {
+        ...payload.params,
+        watermark: false,
+      } as any,
+    });
+  }
+}
