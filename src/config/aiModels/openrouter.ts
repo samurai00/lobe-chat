@@ -339,6 +339,9 @@ const openrouterChatModels: AIChatModelCard[] = [
         { name: 'textOutput', rate: 3.5, strategy: 'fixed', unit: 'millionTokens' },
       ],
     },
+    settings: {
+      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+    },
     type: 'chat',
   },
   {
@@ -773,7 +776,12 @@ const openrouterChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2025-02-24',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+      extendParams: [
+        'disableContextCaching',
+        'supportContextCaching',
+        'enableReasoning',
+        'reasoningBudgetToken',
+      ],
     },
     type: 'chat',
   },
@@ -797,7 +805,12 @@ const openrouterChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2025-05-23',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+      extendParams: [
+        'disableContextCaching',
+        'supportContextCaching',
+        'enableReasoning',
+        'reasoningBudgetToken',
+      ],
     },
     type: 'chat',
   },
@@ -821,7 +834,12 @@ const openrouterChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2025-05-23',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+      extendParams: [
+        'disableContextCaching',
+        'supportContextCaching',
+        'enableReasoning',
+        'reasoningBudgetToken',
+      ],
     },
     type: 'chat',
   },

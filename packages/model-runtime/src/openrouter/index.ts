@@ -3,6 +3,7 @@ import OpenRouterModels from '@/config/aiModels/openrouter';
 import { ModelProvider } from '../types';
 import { processMultiProviderModelList } from '../utils/modelParse';
 import { createOpenAICompatibleRuntime } from '../utils/openaiCompatibleFactory';
+import { buildOpenRouterMessages } from '../utils/openrouterHelpers';
 import { OpenRouterModelCard, OpenRouterModelExtraInfo, OpenRouterReasoning } from './type';
 
 const formatPrice = (price: string) => {
@@ -14,7 +15,9 @@ export const LobeOpenRouterAI = createOpenAICompatibleRuntime({
   baseURL: 'https://openrouter.ai/api/v1',
   chatCompletion: {
     handlePayload: (payload) => {
-      const { thinking, model, max_tokens } = payload;
+      const { messages, thinking, model, max_tokens, enabledContextCaching, ...restPayload } = payload;
+
+      const convertedMessages = buildOpenRouterMessages(messages, { enabledContextCaching });
 
       let reasoning: OpenRouterReasoning = {};
 
@@ -39,7 +42,8 @@ export const LobeOpenRouterAI = createOpenAICompatibleRuntime({
       }
 
       return {
-        ...payload,
+        ...restPayload,
+        messages: convertedMessages,
         model: payload.enabledSearch ? `${payload.model}:online` : payload.model,
         reasoning,
         stream: payload.stream ?? true,
