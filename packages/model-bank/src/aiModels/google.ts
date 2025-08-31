@@ -213,7 +213,7 @@ const googleChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2025-06-17',
     settings: {
-      extendParams: ['thinkingBudget'],
+      extendParams: ['thinkingBudget', 'urlContext'],
       searchImpl: 'params',
       searchProvider: 'google',
     },
@@ -319,7 +319,7 @@ const googleChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2025-07-22',
     settings: {
-      extendParams: ['thinkingBudget'],
+      extendParams: ['thinkingBudget', 'urlContext'],
       searchImpl: 'params',
       searchProvider: 'google',
     },
