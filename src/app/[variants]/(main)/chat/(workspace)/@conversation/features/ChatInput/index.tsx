@@ -1,5 +1,5 @@
 import DesktopChatInput from './Desktop';
-import MobileChatInput from './V1Mobile';
+import MobileChatInput from './Mobile';
 
 const ChatInput = ({ mobile }: { mobile: boolean }) => {
   const Input = mobile ? MobileChatInput : DesktopChatInput;

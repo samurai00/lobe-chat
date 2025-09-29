@@ -15,6 +15,7 @@ import { combineKeys } from '@lobehub/ui';
 import { memo, useEffect, useRef } from 'react';
 import { useHotkeysContext } from 'react-hotkeys-hook';
 
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useUserStore } from '@/store/user';
 import { preferenceSelectors, settingsSelectors } from '@/store/user/selectors';
 
@@ -36,6 +37,7 @@ const InputEditor = memo<{ defaultRows?: number }>(() => {
   const hotkey = useUserStore(settingsSelectors.getHotkeyById(HotkeyEnum.AddUserMessage));
   const { enableScope, disableScope } = useHotkeysContext();
   const slashItems = useSlashItems();
+  const isMobile = useIsMobile();
 
   const isChineseInput = useRef(false);
 
@@ -92,6 +94,8 @@ const InputEditor = memo<{ defaultRows?: number }>(() => {
       onInit={(editor) => storeApi.setState({ editor })}
       onPressEnter={({ event: e }) => {
         if (e.shiftKey || isChineseInput.current) return;
+        // On mobile devices, always allow line breaks instead of sending
+        if (isMobile) return;
         // when user like alt + enter to add ai message
         if (e.altKey && hotkey === combineKeys([KeyEnum.Alt, KeyEnum.Enter])) return true;
         const commandKey = isCommandPressed(e);
