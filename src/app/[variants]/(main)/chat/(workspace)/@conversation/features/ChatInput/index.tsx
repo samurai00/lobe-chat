@@ -1,5 +1,5 @@
 import DesktopChatInput from './Desktop';
-import MobileChatInput from './V1Mobile';
+import MobileChatInput from './Mobile';
 
 interface ChatInputProps {
   mobile: boolean;
