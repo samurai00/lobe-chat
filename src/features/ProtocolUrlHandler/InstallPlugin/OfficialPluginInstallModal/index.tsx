@@ -5,13 +5,13 @@ import { App } from 'antd';
 import { memo, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import DetailLoading from '@/features/PluginStore/McpList/Detail/Loading';
+import DetailLoading from '@/features/MCP/MCPDetail/Loading';
 import { useAgentStore } from '@/store/agent';
 import { useDiscoverStore } from '@/store/discover';
 import { useToolStore } from '@/store/tool';
 import { pluginSelectors } from '@/store/tool/slices/plugin/selectors';
 
-import { McpInstallRequest } from '../types';
+import { type McpInstallRequest } from '../types';
 import OfficialDetail from './Detail';
 
 interface OfficialPluginInstallModalProps {

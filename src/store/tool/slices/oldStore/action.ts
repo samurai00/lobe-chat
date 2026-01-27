@@ -1,22 +1,23 @@
-import { LobeTool } from '@lobechat/types';
+import { type LobeTool } from '@lobechat/types';
+import { uniqBy } from 'es-toolkit/compat';
 import { t } from 'i18next';
 import { produce } from 'immer';
-import { uniqBy } from 'lodash-es';
-import useSWR, { SWRResponse, mutate } from 'swr';
-import { StateCreator } from 'zustand/vanilla';
+import useSWR, { type SWRResponse } from 'swr';
+import { type StateCreator } from 'zustand/vanilla';
 
 import { notification } from '@/components/AntdStaticMethods';
+import { mutate } from '@/libs/swr';
 import { pluginService } from '@/services/plugin';
 import { toolService } from '@/services/tool';
 import { globalHelpers } from '@/store/global/helpers';
 import { pluginStoreSelectors } from '@/store/tool/selectors';
-import { DiscoverPluginItem, PluginListResponse, PluginQueryParams } from '@/types/discover';
-import { PluginInstallError } from '@/types/tool/plugin';
+import { type DiscoverPluginItem, type PluginListResponse, type PluginQueryParams } from '@/types/discover';
+import { type PluginInstallError } from '@/types/tool/plugin';
 import { sleep } from '@/utils/sleep';
 import { setNamespace } from '@/utils/storeDebug';
 
-import { ToolStore } from '../../store';
-import { PluginInstallProgress, PluginInstallStep, PluginStoreState } from './initialState';
+import { type ToolStore } from '../../store';
+import { type PluginInstallProgress, PluginInstallStep, type PluginStoreState } from './initialState';
 
 const n = setNamespace('pluginStore');
 
@@ -56,10 +57,10 @@ export const createPluginStoreSlice: StateCreator<
     const { updateInstallLoadingState, refreshPlugins, updatePluginInstallProgress } = get();
 
     try {
-      // 开始安装流程
+      // Start installation process
       updateInstallLoadingState(name, true);
 
-      // 步骤 1: 获取插件清单
+      // Step 1: Fetch plugin manifest
       updatePluginInstallProgress(name, {
         progress: 25,
         step: PluginInstallStep.FETCHING_MANIFEST,
@@ -67,7 +68,7 @@ export const createPluginStoreSlice: StateCreator<
 
       const data = await toolService.getToolManifest(plugin.manifest);
 
-      // 步骤 2: 安装插件
+      // Step 2: Install plugin
       updatePluginInstallProgress(name, {
         progress: 60,
         step: PluginInstallStep.INSTALLING_PLUGIN,
@@ -82,13 +83,13 @@ export const createPluginStoreSlice: StateCreator<
 
       await refreshPlugins();
 
-      // 步骤 4: 完成安装
+      // Step 4: Complete installation
       updatePluginInstallProgress(name, {
         progress: 100,
         step: PluginInstallStep.COMPLETED,
       });
 
-      // 短暂显示完成状态后清除进度
+      // Briefly show completion status then clear progress
       await sleep(1000);
 
       updatePluginInstallProgress(name, undefined);
@@ -98,7 +99,7 @@ export const createPluginStoreSlice: StateCreator<
 
       const err = error as PluginInstallError;
 
-      // 设置错误状态
+      // Set error state
       updatePluginInstallProgress(name, {
         error: err.message,
         progress: 0,

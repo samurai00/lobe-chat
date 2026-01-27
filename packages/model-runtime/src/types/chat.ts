@@ -47,6 +47,10 @@ export type UserMessageContentPart =
 export interface OpenAIChatMessage {
   content: string | UserMessageContentPart[];
   name?: string;
+  reasoning?: {
+    content?: string;
+    duration?: number;
+  };
   role: LLMRoleType;
   tool_call_id?: string;
   tool_calls?: MessageToolCall[];
@@ -58,36 +62,58 @@ export interface OpenAIChatMessage {
 export interface ChatStreamPayload {
   apiMode?: 'chatCompletion' | 'responses';
   /**
-   * 开启上下文缓存
+   * Enable context caching
    */
   enabledContextCaching?: boolean;
   /**
-   * 是否开启搜索
+   * Whether to enable search
    */
   enabledSearch?: boolean;
   /**
-   * @title 控制生成文本中的惩罚系数，用于减少重复性
+   * @title Penalty coefficient for reducing repetitiveness in generated text
    * @default 0
    */
   frequency_penalty?: number;
   /**
-   * @title 生成文本的最大长度
+   * @title Image aspect ratio for image generation
+   */
+  imageAspectRatio?: string;
+  /**
+   * @title Image resolution for image generation (e.g., '1K', '2K', '4K')
+   */
+  imageResolution?: '1K' | '2K' | '4K';
+  /**
+   * @title Maximum length of generated text
    */
   max_tokens?: number;
   /**
-   * @title 聊天信息列表
+   * @title List of chat messages
    */
   messages: OpenAIChatMessage[];
   /**
-   * @title 模型名称
+   * @title Custom text chunks for mock response
+   */
+  mockChunks?: string[];
+  /**
+   * @title Delay in milliseconds between mock chunks
+   * @default 50
+   */
+  mockDelayMs?: number;
+  /**
+   * @title Enable mock response for benchmark testing
+   * @description When true, returns a simulated SSE stream without calling real LLM API
+   */
+  mockResponse?: boolean;
+  /**
+   * @title Model name
    */
   model: string;
   /**
-   * @title 返回的文本数量
+   * @title Number of text responses to return
    */
   n?: number;
   /**
-   * @title 控制生成文本中的惩罚系数，用于减少主题的变化
+   * @title Penalty coefficient for reducing topic variation in generated text
    * @default 0
    */
   presence_penalty?: number;
@@ -100,12 +126,12 @@ export interface ChatStreamPayload {
   responseMode?: 'stream' | 'json';
   response_format?: ChatResponseFormat;
   /**
-   * @title 是否开启流式请求
+   * @title Whether to enable streaming requests
    * @default true
    */
   stream?: boolean;
   /**
-   * @title 生成文本的随机度量，用于控制文本的创造性和多样性
+   * @title Randomness measure for generated text, controls creativity and diversity
    * @default 1
    */
   temperature?: number;
@@ -120,16 +146,20 @@ export interface ChatStreamPayload {
     type: 'enabled' | 'disabled';
   };
   thinkingBudget?: number;
+  /**
+   * Thinking level for Gemini models (e.g., gemini-3.0-pro)
+   */
+  thinkingLevel?: 'low' | 'high';
   tool_choice?: string;
   tools?: ChatCompletionTool[];
   /**
-   * @title 控制生成文本中最高概率的单个令牌
+   * @title Controls the highest probability single token in generated text
    * @default 1
    */
   top_p?: number;
   truncation?: 'auto' | 'disabled';
   /**
-   * @title Gemini URL 上下文获取工具开关
+   * @title Gemini URL context fetching tool toggle
    */
   urlContext?: boolean;
   verbosity?: 'low' | 'medium' | 'high';
@@ -193,13 +223,57 @@ export interface OnFinishData {
   usage?: ModelUsage;
 }
 
+/**
+ * Base64 image data from model output
+ */
+export interface Base64ImageData {
+  /** Base64 encoded image data (with or without data URI prefix) */
+  data: string;
+  /** Unique identifier for the image */
+  id: string;
+}
+
+/**
+ * Content part data for multimodal output
+ */
+export interface ContentPartData {
+  /** Text content or base64 image data */
+  content: string;
+  /** Image MIME type (for image parts) */
+  mimeType?: string;
+  /** Part type: text or image */
+  partType: 'text' | 'image';
+  /** Optional signature for reasoning verification (Google Gemini feature) */
+  thoughtSignature?: string;
+}
+
 export interface ChatStreamCallbacks {
+  /**
+   * `onBase64Image`: Called when a base64 image is received from the model.
+   * Used for models that generate images (e.g., GPT-4 with DALL-E, Gemini with image output)
+   */
+  onBase64Image?: (data: {
+    /** The newly received image */
+    image: Base64ImageData;
+    /** All images received so far */
+    images: Base64ImageData[];
+  }) => Promise<void> | void;
   onCompletion?: (data: OnFinishData) => Promise<void> | void;
+  /**
+   * `onContentPart`: Called for each content part in multimodal output.
+   * Used for models that return structured content with mixed text and images.
+   */
+  onContentPart?: (data: ContentPartData) => Promise<void> | void;
   /**
    * `onFinal`: Called once when the stream is closed with the final completion message.
    **/
   onFinal?: (data: OnFinishData) => Promise<void> | void;
   onGrounding?: (grounding: any) => Promise<void> | void;
+  /**
+   * `onReasoningPart`: Called for each reasoning/thinking part in multimodal output.
+   * Used for models that return structured reasoning with mixed text and images.
+   */
+  onReasoningPart?: (data: ContentPartData) => Promise<void> | void;
   /** `onStart`: Called once when the stream is initialized. */
   onStart?: () => Promise<void> | void;
   /** `onText`: Called for each text chunk. */

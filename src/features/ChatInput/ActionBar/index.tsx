@@ -4,10 +4,11 @@ import { memo, useMemo } from 'react';
 import { useGlobalStore } from '@/store/global';
 import { systemStatusSelectors } from '@/store/global/selectors';
 import { useUserStore } from '@/store/user';
-import { preferenceSelectors } from '@/store/user/slices/preference/selectors';
+import { labPreferSelectors } from '@/store/user/slices/preference/selectors';
 
-import { ActionKeys, actionMap } from '../ActionBar/config';
+import { type ActionKeys, actionMap } from '../ActionBar/config';
 import { useChatInputStore } from '../store';
+import { ActionBarContext, type DropdownPlacement } from './context';
 
 const mapActionsToItems = (keys: ActionKeys[]): ChatInputActionsProps['items'] =>
   keys.map((actionKey, index) => {
@@ -39,12 +40,16 @@ const mapActionsToItems = (keys: ActionKeys[]): ChatInputActionsProps['items'] =
     }
   });
 
-const ActionToolbar = memo(() => {
+export interface ActionToolbarProps {
+  dropdownPlacement?: DropdownPlacement;
+}
+
+const ActionToolbar = memo<ActionToolbarProps>(({ dropdownPlacement }) => {
   const [expandInputActionbar, toggleExpandInputActionbar] = useGlobalStore((s) => [
     systemStatusSelectors.expandInputActionbar(s),
     s.toggleExpandInputActionbar,
   ]);
-  const enableRichRender = useUserStore(preferenceSelectors.inputMarkdownRender);
+  const enableRichRender = useUserStore(labPreferSelectors.enableInputMarkdown);
 
   const leftActions = useChatInputStore((s) =>
     s.leftActions.filter((item) => (enableRichRender ? true : item !== 'typo')),
@@ -54,16 +59,20 @@ const ActionToolbar = memo(() => {
 
   const items = useMemo(() => mapActionsToItems(leftActions), [leftActions]);
 
+  const contextValue = useMemo(() => ({ dropdownPlacement }), [dropdownPlacement]);
+
   return (
-    <ChatInputActions
-      collapseOffset={mobile ? 48 : 80}
-      defaultGroupCollapse={true}
-      groupCollapse={!expandInputActionbar}
-      items={items}
-      onGroupCollapseChange={(v) => {
-        toggleExpandInputActionbar(!v);
-      }}
-    />
+    <ActionBarContext.Provider value={contextValue}>
+      <ChatInputActions
+        collapseOffset={mobile ? 48 : 80}
+        defaultGroupCollapse={true}
+        groupCollapse={!expandInputActionbar}
+        items={items}
+        onGroupCollapseChange={(v) => {
+          toggleExpandInputActionbar(!v);
+        }}
+      />
+    </ActionBarContext.Provider>
   );
 });
 

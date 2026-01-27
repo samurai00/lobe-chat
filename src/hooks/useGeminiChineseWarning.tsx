@@ -1,5 +1,6 @@
 import { containsChinese } from '@lobechat/utils';
-import { App, Checkbox } from 'antd';
+import { Checkbox } from '@lobehub/ui';
+import { App } from 'antd';
 import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -47,7 +48,7 @@ export const useGeminiChineseWarning = () => {
       return new Promise<boolean>((resolve) => {
         let doNotShowAgain = false;
 
-        // 根据场景选择不同的按钮文案
+        // Select different button text based on scenario
         const continueText =
           scenario === 'image'
             ? t('geminiImageChineseWarning.continueGenerate')
@@ -61,8 +62,8 @@ export const useGeminiChineseWarning = () => {
               <p>{t('geminiImageChineseWarning.content')}</p>
               <div style={{ marginTop: 16 }}>
                 <Checkbox
-                  onChange={(e) => {
-                    doNotShowAgain = e.target.checked;
+                  onChange={(v) => {
+                    doNotShowAgain = v;
                   }}
                 >
                   {t('geminiImageChineseWarning.doNotShowAgain')}

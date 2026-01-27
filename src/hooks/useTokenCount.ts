@@ -1,4 +1,4 @@
-import { debounce } from 'lodash-es';
+import { debounce } from 'es-toolkit/compat';
 import { startTransition, useCallback, useEffect, useState } from 'react';
 
 import { encodeAsync } from '@/utils/tokenizer';
@@ -22,7 +22,7 @@ export const useTokenCount = (input: string = '') => {
       debouncedEncode(input || '');
     });
 
-    // 清理函数
+    // Cleanup function
     return () => {
       debouncedEncode.cancel();
     };

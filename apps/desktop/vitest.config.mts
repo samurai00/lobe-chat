@@ -5,6 +5,7 @@ export default defineConfig({
   test: {
     alias: {
       '@': resolve(__dirname, './src/main'),
+      '~common': resolve(__dirname, './src/common'),
     },
     coverage: {
       all: false,
@@ -13,5 +14,6 @@ export default defineConfig({
       reportsDirectory: './coverage/app',
     },
     environment: 'node',
+    setupFiles: ['./src/main/__mocks__/setup.ts'],
   },
 });

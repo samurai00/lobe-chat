@@ -1,47 +1,78 @@
-import { AgentRuntimeError, ChatCompletionErrorPayload } from '@lobechat/model-runtime';
-import { ChatErrorType, TracePayload, TraceTagMap, UIChatMessage } from '@lobechat/types';
-import { PluginRequestPayload, createHeadersWithPluginSettings } from '@lobehub/chat-plugin-sdk';
-import { merge } from 'lodash-es';
+import { AgentBuilderIdentifier } from '@lobechat/builtin-tool-agent-builder';
+import { KLAVIS_SERVER_TYPES, LOBEHUB_SKILL_PROVIDERS } from '@lobechat/const';
+import type { OfficialToolItem } from '@lobechat/context-engine';
+import {
+  type FetchSSEOptions,
+  fetchSSE,
+  getMessageError,
+  standardizeAnimationStyle,
+} from '@lobechat/fetch-sse';
+import { AgentRuntimeError, type ChatCompletionErrorPayload } from '@lobechat/model-runtime';
+import {
+  ChatErrorType,
+  type RuntimeInitialContext,
+  type RuntimeStepContext,
+  type TracePayload,
+  TraceTagMap,
+  type UIChatMessage,
+} from '@lobechat/types';
+import {
+  type PluginRequestPayload,
+  createHeadersWithPluginSettings,
+} from '@lobehub/chat-plugin-sdk';
+import { merge } from 'es-toolkit/compat';
 import { ModelProvider } from 'model-bank';
 
-import { enableAuth } from '@/const/auth';
 import { DEFAULT_AGENT_CONFIG } from '@/const/settings';
-import { isDesktop } from '@/const/version';
 import { getSearchConfig } from '@/helpers/getSearchConfig';
-import { createChatToolsEngine, createToolsEngine } from '@/helpers/toolEngineering';
 import { getAgentStoreState } from '@/store/agent';
-import { agentChatConfigSelectors, agentSelectors } from '@/store/agent/selectors';
-import { aiModelSelectors, aiProviderSelectors, getAiInfraStoreState } from '@/store/aiInfra';
-import { getSessionStoreState } from '@/store/session';
-import { sessionMetaSelectors } from '@/store/session/selectors';
+import {
+  agentByIdSelectors,
+  agentChatConfigSelectors,
+  agentSelectors,
+  chatConfigByIdSelectors,
+} from '@/store/agent/selectors';
+import { aiProviderSelectors, getAiInfraStoreState } from '@/store/aiInfra';
+import { getChatStoreState } from '@/store/chat';
 import { getToolStoreState } from '@/store/tool';
-import { pluginSelectors } from '@/store/tool/selectors';
+import {
+  builtinToolSelectors,
+  klavisStoreSelectors,
+  lobehubSkillStoreSelectors,
+  pluginSelectors,
+} from '@/store/tool/selectors';
 import { getUserStoreState, useUserStore } from '@/store/user';
 import {
-  preferenceSelectors,
+  settingsSelectors,
   userGeneralSettingsSelectors,
   userProfileSelectors,
 } from '@/store/user/selectors';
 import type { ChatStreamPayload, OpenAIChatMessage } from '@/types/openai/chat';
-import { fetchWithInvokeStream } from '@/utils/electron/desktopRemoteRPCFetch';
 import { createErrorResponse } from '@/utils/errorResponse';
-import {
-  FetchSSEOptions,
-  fetchSSE,
-  getMessageError,
-  standardizeAnimationStyle,
-} from '@/utils/fetch';
 import { createTraceHeader, getTraceId } from '@/utils/trace';
 
 import { createHeaderWithAuth } from '../_auth';
 import { API_ENDPOINTS } from '../_url';
-import { initializeWithClientStore } from './clientModelRuntime';
-import { contextEngineering } from './contextEngineering';
 import { findDeploymentName, isEnableFetchOnClient, resolveRuntimeProvider } from './helper';
-import { FetchOptions } from './types';
+import {
+  type ResolvedAgentConfig,
+  contextEngineering,
+  getTargetAgentId,
+  initializeWithClientStore,
+  resolveModelExtendParams,
+} from './mecha';
+import { type FetchOptions } from './types';
 
 interface GetChatCompletionPayload extends Partial<Omit<ChatStreamPayload, 'messages'>> {
+  agentId?: string;
+  groupId?: string;
   messages: UIChatMessage[];
+  /**
+   * Pre-resolved agent config from AgentRuntime layer.
+   * Required to ensure config consistency and proper isSubTask filtering.
+   */
+  resolvedAgentConfig: ResolvedAgentConfig;
+  topicId?: string;
 }
 
 type ChatStreamInputParams = Partial<Omit<ChatStreamPayload, 'messages'>> & {
@@ -52,12 +83,12 @@ interface FetchAITaskResultParams extends FetchSSEOptions {
   abortController?: AbortController;
   onError?: (e: Error, rawError?: any) => void;
   /**
-   * 加载状态变化处理函数
-   * @param loading - 是否处于加载状态
+   * Loading state change handler function
+   * @param loading - Whether in loading state
    */
   onLoadingChange?: (loading: boolean) => void;
   /**
-   * 请求对象
+   * Request object
    */
   params: ChatStreamInputParams;
   trace?: TracePayload;
@@ -66,13 +97,24 @@ interface FetchAITaskResultParams extends FetchSSEOptions {
 interface CreateAssistantMessageStream extends FetchSSEOptions {
   abortController?: AbortController;
   historySummary?: string;
+  /** Initial context for page editor (captured at operation start) */
+  initialContext?: RuntimeInitialContext;
   params: GetChatCompletionPayload;
+  /** Step context for page editor (updated each step) */
+  stepContext?: RuntimeStepContext;
   trace?: TracePayload;
 }
 
 class ChatService {
   createAssistantMessage = async (
-    { plugins: enabledPlugins, messages, ...params }: GetChatCompletionPayload,
+    {
+      messages,
+      agentId,
+      groupId,
+      topicId,
+      resolvedAgentConfig,
+      ...params
+    }: GetChatCompletionPayload,
     options?: FetchOptions,
   ) => {
     const payload = merge(
@@ -84,125 +126,161 @@ class ChatService {
       params,
     );
 
-    const searchConfig = getSearchConfig(payload.model, payload.provider!);
+    // =================== 1. use pre-resolved agent config =================== //
+    // Config is resolved in AgentRuntime layer (internal_createAgentState)
+    // which handles isSubTask filtering, disableTools, and tools generation
 
-    // =================== 1. preprocess tools =================== //
+    const targetAgentId = getTargetAgentId(agentId);
 
-    const pluginIds = [...(enabledPlugins || [])];
+    // Tools are pre-generated in internal_createAgentState and passed via resolvedAgentConfig
+    // This avoids duplicate toolsEngine creation and ensures disableTools is properly handled
+    const {
+      agentConfig,
+      chatConfig,
+      enabledManifests = [],
+      enabledToolIds = [],
+      tools,
+    } = resolvedAgentConfig;
 
-    const toolsEngine = createChatToolsEngine({
-      model: payload.model,
-      provider: payload.provider!,
-    });
+    // Get search config with agentId for agent-specific settings
+    const searchConfig = getSearchConfig(payload.model, payload.provider!, targetAgentId);
 
-    const { tools, enabledToolIds } = toolsEngine.generateToolsDetailed({
-      model: payload.model,
-      provider: payload.provider!,
-      toolIds: pluginIds,
-    });
+    // =================== 1.1 process user memories =================== //
 
-    // ============  2. preprocess messages   ============ //
+    const enableUserMemories = settingsSelectors.memoryEnabled(getUserStoreState());
 
-    const agentStoreState = getAgentStoreState();
-    const agentConfig = agentSelectors.currentAgentConfig(agentStoreState);
-    const chatConfig = agentChatConfigSelectors.currentChatConfig(agentStoreState);
+    // =================== 1.2 build agent builder context =================== //
+
+    // Check if Agent Builder tool is enabled and build context for it
+    // Note: When Agent Builder is active, we need to get the context of the agent being edited,
+    // which is stored in chatStore.activeAgentId, not the targetAgentId (which is the Agent Builder itself)
+    const isAgentBuilderEnabled = enabledToolIds.includes(AgentBuilderIdentifier);
+    let agentBuilderContext;
+
+    if (isAgentBuilderEnabled) {
+      const activeAgentId = getChatStoreState().activeAgentId || '';
+      const baseContext =
+        agentByIdSelectors.getAgentBuilderContextById(activeAgentId)(getAgentStoreState());
+
+      // Build official tools list (builtin tools + Klavis tools)
+      const toolState = getToolStoreState();
+      const enabledPlugins =
+        agentSelectors.getAgentConfigById(activeAgentId)(getAgentStoreState()).plugins || [];
+
+      const officialTools: OfficialToolItem[] = [];
+
+      // Get builtin tools (excluding Klavis tools)
+      const builtinTools = builtinToolSelectors.metaList(toolState);
+      const klavisIdentifiers = new Set(KLAVIS_SERVER_TYPES.map((t) => t.identifier));
+
+      for (const tool of builtinTools) {
+        // Skip Klavis tools in builtin list (they'll be shown separately)
+        if (klavisIdentifiers.has(tool.identifier)) continue;
+
+        officialTools.push({
+          description: tool.meta?.description,
+          enabled: enabledPlugins.includes(tool.identifier),
+          identifier: tool.identifier,
+          installed: true,
+          name: tool.meta?.title || tool.identifier,
+          type: 'builtin',
+        });
+      }
+
+      // Get Klavis tools (if enabled)
+      const isKlavisEnabled =
+        typeof window !== 'undefined' &&
+        window.global_serverConfigStore?.getState()?.serverConfig?.enableKlavis;
+
+      if (isKlavisEnabled) {
+        const allKlavisServers = klavisStoreSelectors.getServers(toolState);
+
+        for (const klavisType of KLAVIS_SERVER_TYPES) {
+          const server = allKlavisServers.find((s) => s.identifier === klavisType.identifier);
+
+          officialTools.push({
+            description: `LobeHub Mcp Server: ${klavisType.label}`,
+            enabled: enabledPlugins.includes(klavisType.identifier),
+            identifier: klavisType.identifier,
+            installed: !!server,
+            name: klavisType.label,
+            type: 'klavis',
+          });
+        }
+      }
+
+      // Get LobehubSkill providers (if enabled)
+      const isLobehubSkillEnabled =
+        typeof window !== 'undefined' &&
+        window.global_serverConfigStore?.getState()?.serverConfig?.enableLobehubSkill;
+
+      if (isLobehubSkillEnabled) {
+        const allLobehubSkillServers = lobehubSkillStoreSelectors.getServers(toolState);
+
+        for (const provider of LOBEHUB_SKILL_PROVIDERS) {
+          const server = allLobehubSkillServers.find((s) => s.identifier === provider.id);
+
+          officialTools.push({
+            description: `LobeHub Skill Provider: ${provider.label}`,
+            enabled: enabledPlugins.includes(provider.id),
+            identifier: provider.id,
+            installed: !!server,
+            name: provider.label,
+            type: 'lobehub-skill',
+          });
+        }
+      }
+
+      agentBuilderContext = {
+        ...baseContext,
+        officialTools,
+      };
+    }
 
     // Apply context engineering with preprocessing configuration
-    const oaiMessages = await contextEngineering({
-      enableHistoryCount: agentChatConfigSelectors.enableHistoryCount(agentStoreState),
-      // include user messages
-      historyCount: agentChatConfigSelectors.historyCount(agentStoreState) + 2,
+    // Note: agentConfig.systemRole is already resolved by resolveAgentConfig for builtin agents
+    const modelMessages = await contextEngineering({
+      agentBuilderContext,
+      agentId: targetAgentId,
+      enableHistoryCount:
+        chatConfigByIdSelectors.getEnableHistoryCountById(targetAgentId)(getAgentStoreState()),
+      enableUserMemories,
+      groupId,
+      historyCount:
+        chatConfigByIdSelectors.getHistoryCountById(targetAgentId)(getAgentStoreState()) + 2,
+      // Page editor context from agent runtime
+      initialContext: options?.initialContext,
       inputTemplate: chatConfig.inputTemplate,
+      manifests: enabledManifests,
       messages,
       model: payload.model,
       provider: payload.provider!,
       sessionId: options?.trace?.sessionId,
+      stepContext: options?.stepContext,
       systemRole: agentConfig.systemRole,
       tools: enabledToolIds,
+      topicId,
     });
 
     // ============  3. process extend params   ============ //
 
-    let extendParams: Record<string, any> = {};
-    const aiInfraStoreState = getAiInfraStoreState();
-
-    const isModelHasExtendParams = aiModelSelectors.isModelHasExtendParams(
-      payload.model,
-      payload.provider!,
-    )(aiInfraStoreState);
-
-    // model
-    if (isModelHasExtendParams) {
-      const modelExtendParams = aiModelSelectors.modelExtendParams(
-        payload.model,
-        payload.provider!,
-      )(aiInfraStoreState);
-      // if model has extended params, then we need to check if the model can use reasoning
-
-      if (modelExtendParams!.includes('enableReasoning')) {
-        if (chatConfig.enableReasoning) {
-          extendParams.thinking = {
-            budget_tokens: chatConfig.reasoningBudgetToken || 1024,
-            type: 'enabled',
-          };
-        } else {
-          extendParams.thinking = {
-            budget_tokens: 0,
-            type: 'disabled',
-          };
-        }
-      } else if (modelExtendParams!.includes('reasoningBudgetToken')) {
-        // For models that only have reasoningBudgetToken without enableReasoning
-        extendParams.thinking = {
-          budget_tokens: chatConfig.reasoningBudgetToken || 1024,
-          type: 'enabled',
-        };
-      }
-
-      if (
-        modelExtendParams!.includes('disableContextCaching') &&
-        chatConfig.disableContextCaching
-      ) {
-        extendParams.enabledContextCaching = false;
-      }
-
-      if (modelExtendParams!.includes('reasoningEffort') && chatConfig.reasoningEffort) {
-        extendParams.reasoning_effort = chatConfig.reasoningEffort;
-      }
-
-      if (modelExtendParams!.includes('gpt5ReasoningEffort') && chatConfig.gpt5ReasoningEffort) {
-        extendParams.reasoning_effort = chatConfig.gpt5ReasoningEffort;
-      }
-
-      if (modelExtendParams!.includes('textVerbosity') && chatConfig.textVerbosity) {
-        extendParams.verbosity = chatConfig.textVerbosity;
-      }
-
-      if (modelExtendParams!.includes('thinking') && chatConfig.thinking) {
-        extendParams.thinking = { type: chatConfig.thinking };
-      }
-
-      if (
-        modelExtendParams!.includes('thinkingBudget') &&
-        chatConfig.thinkingBudget !== undefined
-      ) {
-        extendParams.thinkingBudget = chatConfig.thinkingBudget;
-      }
-
-      if (modelExtendParams!.includes('urlContext') && chatConfig.urlContext) {
-        extendParams.urlContext = chatConfig.urlContext;
-      }
-    }
+    const extendParams = resolveModelExtendParams({
+      chatConfig,
+      model: payload.model,
+      provider: payload.provider!,
+    });
 
     return this.getChatCompletion(
       {
         ...params,
         ...extendParams,
         enabledSearch: searchConfig.enabledSearch && searchConfig.useModelSearch ? true : undefined,
-        messages: oaiMessages,
+        messages: modelMessages,
+        // Use the chatConfig from the target agent for streaming preference
+        stream: chatConfig.enableStreaming !== false,
         tools,
       },
-      options,
+      { ...options, agentId: targetAgentId, topicId },
     );
   };
 
@@ -215,20 +293,24 @@ class ChatService {
     onFinish,
     trace,
     historySummary,
+    initialContext,
+    stepContext,
   }: CreateAssistantMessageStream) => {
     await this.createAssistantMessage(params, {
       historySummary,
+      initialContext,
       onAbort,
       onErrorHandle,
       onFinish,
       onMessageHandle,
       signal: abortController?.signal,
+      stepContext,
       trace: this.mapTrace(trace, TraceTagMap.Chat),
     });
   };
 
   getChatCompletion = async (params: Partial<ChatStreamPayload>, options?: FetchOptions) => {
-    const { signal, responseAnimation } = options ?? {};
+    const { agentId, signal, responseAnimation, topicId } = options ?? {};
 
     const { provider = ModelProvider.OpenAI, ...res } = params;
 
@@ -248,14 +330,19 @@ class ChatService {
       model = findDeploymentName(model, provider);
     }
 
-    const apiMode = aiProviderSelectors.isProviderEnableResponseApi(provider)(
-      getAiInfraStoreState(),
-    )
+    // When user explicitly disables Responses API, set apiMode to 'chatCompletion'
+    // This ensures the user's preference takes priority over provider's useResponseModels config
+    // When user enables Responses API, set to 'responses' to force use Responses API
+    const apiMode: 'responses' | 'chatCompletion' = aiProviderSelectors.isProviderEnableResponseApi(
+      provider,
+    )(getAiInfraStoreState())
       ? 'responses'
-      : undefined;
+      : 'chatCompletion';
 
     // Get the chat config to check streaming preference
     const chatConfig = agentChatConfigSelectors.currentChatConfig(getAgentStoreState());
+
+    delete (res as any).scope;
 
     const payload = merge(
       {
@@ -281,10 +368,7 @@ class ChatService {
 
     let fetcher: typeof fetch | undefined = undefined;
 
-    // Add desktop remote RPC fetch support
-    if (isDesktop) {
-      fetcher = fetchWithInvokeStream;
-    } else if (enableFetchOnClient) {
+    if (enableFetchOnClient) {
       /**
        * Notes:
        * 1. Browser agent runtime will skip auth check if a key and endpoint provided by
@@ -313,11 +397,16 @@ class ChatService {
     const traceHeader = createTraceHeader({ ...options?.trace });
 
     const headers = await createHeaderWithAuth({
-      headers: { 'Content-Type': 'application/json', ...traceHeader },
+      headers: {
+        'Content-Type': 'application/json',
+        ...traceHeader,
+        ...(agentId && { 'x-agent-id': agentId }),
+        ...(topicId && { 'x-topic-id': topicId }),
+      },
       provider,
     });
 
-    const { DEFAULT_MODEL_PROVIDER_LIST } = await import('@/config/modelProviders');
+    const { DEFAULT_MODEL_PROVIDER_LIST } = await import('model-bank/modelProviders');
     const providerConfig = DEFAULT_MODEL_PROVIDER_LIST.find((item) => item.id === provider);
 
     const userPreferTransitionMode =
@@ -330,7 +419,7 @@ class ChatService {
       responseAnimation,
     ].reduce((acc, cur) => merge(acc, standardizeAnimationStyle(cur)), {});
 
-    return fetchSSE(API_ENDPOINTS.chat(sdkType), {
+    return fetchSSE(API_ENDPOINTS.chat(provider), {
       body: JSON.stringify(payload),
       fetcher: fetcher,
       headers,
@@ -403,20 +492,10 @@ class ChatService {
         messages: params.messages as any,
         model: params.model!,
         provider: params.provider!,
-        tools: params.plugins,
-      });
-      // Use simple tools engine without complex search logic
-      const toolsEngine = createToolsEngine();
-      const tools = toolsEngine.generateTools({
-        model: params.model!,
-        provider: params.provider!,
-        toolIds: params.plugins,
       });
 
-      // remove plugins
-      delete params.plugins;
       await this.getChatCompletion(
-        { ...params, messages: llmMessages, tools },
+        { ...params, messages: llmMessages },
         {
           onErrorHandle: (error) => {
             errorHandle(new Error(error.message), error);
@@ -435,9 +514,9 @@ class ChatService {
   };
 
   private mapTrace = (trace?: TracePayload, tag?: TraceTagMap): TracePayload => {
-    const tags = sessionMetaSelectors.currentAgentMeta(getSessionStoreState()).tags || [];
+    const tags = agentSelectors.currentAgentMeta(getAgentStoreState()).tags || [];
 
-    const enabled = preferenceSelectors.userAllowTrace(getUserStoreState());
+    const enabled = userGeneralSettingsSelectors.telemetry(getUserStoreState());
 
     if (!enabled) return { ...trace, enabled: false };
 
@@ -463,7 +542,7 @@ class ChatService {
      * if enable login and not signed in, return unauthorized error
      */
     const userStore = useUserStore.getState();
-    if (enableAuth && !userStore.isSignedIn) {
+    if (!userStore.isSignedIn) {
       throw AgentRuntimeError.createError(ChatErrorType.InvalidAccessCode);
     }
 

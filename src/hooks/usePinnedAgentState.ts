@@ -1,21 +1,19 @@
-import { parseAsBoolean, useQueryState } from 'nuqs';
-import { useMemo } from 'react';
+'use client';
+
+import { useAgentStore } from '@/store/agent';
 
 export const usePinnedAgentState = () => {
-  const [isPinned, setIsPinned] = useQueryState(
-    'pinned',
-    parseAsBoolean.withDefault(false).withOptions({ clearOnDefault: true }),
-  );
+  const isPinned = useAgentStore((s) => s.isAgentPinned);
+  const setAgentPinned = useAgentStore((s) => s.setAgentPinned);
+  const toggleAgentPinned = useAgentStore((s) => s.toggleAgentPinned);
 
-  const actions = useMemo(
-    () => ({
-      pinAgent: () => setIsPinned(true),
-      setIsPinned,
-      togglePinAgent: () => setIsPinned((prev) => !prev),
-      unpinAgent: () => setIsPinned(false),
-    }),
-    [],
-  );
-
-  return [isPinned, actions] as const;
+  return [
+    isPinned,
+    {
+      pinAgent: () => setAgentPinned(true),
+      setIsPinned: setAgentPinned,
+      togglePinAgent: toggleAgentPinned,
+      unpinAgent: () => setAgentPinned(false),
+    },
+  ] as const;
 };

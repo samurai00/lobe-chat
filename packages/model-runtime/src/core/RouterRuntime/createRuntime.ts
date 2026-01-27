@@ -1,11 +1,14 @@
 /**
  * @see https://github.com/lobehub/lobe-chat/discussions/6563
  */
+import type { GoogleGenAIOptions } from '@google/genai';
 import type { ChatModelCard } from '@lobechat/types';
+import debug from 'debug';
 import OpenAI, { ClientOptions } from 'openai';
 import { Stream } from 'openai/streaming';
 
 import { LobeOpenAI } from '../../providers/openai';
+import { LobeVertexAI } from '../../providers/vertexai';
 import {
   CreateImagePayload,
   CreateImageResponse,
@@ -20,19 +23,15 @@ import {
   ChatStreamPayload,
   EmbeddingsOptions,
   EmbeddingsPayload,
-  TextToImagePayload,
   TextToSpeechPayload,
 } from '../../types';
 import { postProcessModelList } from '../../utils/postProcessModelList';
+import { safeParseJSON } from '../../utils/safeParseJSON';
 import { LobeRuntimeAI } from '../BaseAI';
 import { CreateImageOptions, CustomClientOptions } from '../openaiCompatibleFactory';
 import { baseRuntimeMap } from './baseRuntimeMap';
 
-export interface RuntimeItem {
-  id: string;
-  models?: string[];
-  runtime: LobeRuntimeAI;
-}
+const log = debug('lobe-model-runtime:router-runtime');
 
 interface ProviderIniOptions extends Record<string, any> {
   accessKeyId?: string;
@@ -46,12 +45,25 @@ interface ProviderIniOptions extends Record<string, any> {
   sessionToken?: string;
 }
 
+/**
+ * Router option item used for inference.
+ * When `options` is an array, items are tried in order for chat fallback.
+ * `apiType` allows switching provider when falling back.
+ */
+interface RouterOptionItem extends ProviderIniOptions {
+  apiType?: keyof typeof baseRuntimeMap;
+  id?: string;
+  remark?: string;
+}
+
+type RouterOptions = RouterOptionItem | RouterOptionItem[];
+
 export type RuntimeClass = typeof LobeOpenAI;
 
 interface RouterInstance {
   apiType: keyof typeof baseRuntimeMap;
   models?: string[];
-  options: ProviderIniOptions;
+  options: RouterOptions;
   runtime?: RuntimeClass;
 }
 
@@ -124,7 +136,7 @@ export interface CreateRouterRuntimeOptions<T extends Record<string, any> = any>
 export const createRouterRuntime = ({
   id,
   routers,
-  apiKey: DEFAULT_API_LEY,
+  apiKey: DEFAULT_API_KEY,
   models: modelsOption,
   ...params
 }: CreateRouterRuntimeOptions) => {
@@ -137,21 +149,20 @@ export const createRouterRuntime = ({
     constructor(options: ClientOptions & Record<string, any> = {}) {
       this._options = {
         ...options,
-        apiKey: options.apiKey?.trim() || DEFAULT_API_LEY,
+        apiKey: options.apiKey?.trim() || DEFAULT_API_KEY,
         baseURL: options.baseURL?.trim(),
       };
 
-      // 保存配置但不创建 runtimes
+      // Save configuration without creating runtimes
       this._routers = routers;
       this._params = params;
       this._id = id;
     }
 
     /**
-     * TODO: 考虑添加缓存机制，避免重复创建相同配置的 runtimes
+     * Resolve routers configuration and validate
      */
-    private async createRuntimesByRouters(model?: string): Promise<RuntimeItem[]> {
-      // 动态获取 routers，支持传入 model
+    private async resolveRouters(model?: string): Promise<RouterInstance[]> {
       const resolvedRouters =
         typeof this._routers === 'function'
           ? await this._routers(this._options, { model })
@@ -161,37 +172,201 @@ export const createRouterRuntime = ({
         throw new Error('empty providers');
       }
 
-      return resolvedRouters.map((router) => {
-        const providerAI = router.runtime ?? baseRuntimeMap[router.apiType] ?? LobeOpenAI;
-        const finalOptions = { ...this._params, ...this._options, ...router.options };
-        const runtime: LobeRuntimeAI = new providerAI({ ...finalOptions, id: this._id });
+      return resolvedRouters;
+    }
+
+    private async resolveMatchedRouter(model: string): Promise<RouterInstance> {
+      const resolvedRouters = await this.resolveRouters(model);
+      return (
+        resolvedRouters.find((router) => {
+          if (router.models && router.models.length > 0) {
+            return router.models.includes(model);
+          }
+          return false;
+        }) ?? resolvedRouters.at(-1)!
+      );
+    }
+
+    private normalizeRouterOptions(router: RouterInstance): RouterOptionItem[] {
+      const routerOptions = Array.isArray(router.options) ? router.options : [router.options];
+
+      if (routerOptions.length === 0 || routerOptions.some((optionItem) => !optionItem)) {
+        throw new Error('empty provider options');
+      }
+
+      return routerOptions;
+    }
+
+    /**
+     * Build a runtime instance for a specific option item.
+     * Option items can override apiType to switch providers for fallback.
+     */
+    private createRuntimeFromOption(
+      router: RouterInstance,
+      optionItem: RouterOptionItem,
+    ): {
+      channelId?: string;
+      id: keyof typeof baseRuntimeMap;
+      remark?: string;
+      runtime: LobeRuntimeAI;
+    } {
+      const { apiType: optionApiType, id: channelId, remark, ...optionOverrides } = optionItem;
+      const resolvedApiType = optionApiType ?? router.apiType;
+      const finalOptions = { ...this._params, ...this._options, ...optionOverrides };
+
+      /**
+       * Vertex AI uses GoogleGenAI credentials flow rather than API keys.
+       * Accept JSON credentials in apiKey for compatibility with server config.
+       */
+      if (resolvedApiType === 'vertexai') {
+        const { apiKey, googleAuthOptions, project, location, ...restOptions } = finalOptions;
+        const credentials = safeParseJSON<Record<string, any>>(apiKey);
+        const vertexOptions: GoogleGenAIOptions = {
+          ...(restOptions as GoogleGenAIOptions),
+          vertexai: true,
+        };
+
+        if (googleAuthOptions) {
+          vertexOptions.googleAuthOptions = googleAuthOptions;
+        } else if (credentials) {
+          vertexOptions.googleAuthOptions = { credentials };
+        }
+
+        if (project) vertexOptions.project = project;
+        if (location) vertexOptions.location = location as GoogleGenAIOptions['location'];
 
         return {
-          id: router.apiType,
+          channelId,
+          id: resolvedApiType,
+          remark,
+          runtime: LobeVertexAI.initFromVertexAI(vertexOptions),
+        };
+      }
+
+      const providerAI =
+        resolvedApiType === router.apiType
+          ? (router.runtime ?? baseRuntimeMap[resolvedApiType] ?? LobeOpenAI)
+          : (baseRuntimeMap[resolvedApiType] ?? LobeOpenAI);
+      const runtime: LobeRuntimeAI = new providerAI({ ...finalOptions, id: this._id });
+
+      return {
+        channelId,
+        id: resolvedApiType,
+        remark,
+        runtime,
+      };
+    }
+
+    private async runWithFallback<T>(
+      model: string,
+      requestHandler: (runtime: LobeRuntimeAI) => Promise<T>,
+    ): Promise<T> {
+      const matchedRouter = await this.resolveMatchedRouter(model);
+      const routerOptions = this.normalizeRouterOptions(matchedRouter);
+      const totalOptions = routerOptions.length;
+
+      log(
+        'resolve router for model=%s apiType=%s options=%d',
+        model,
+        matchedRouter.apiType,
+        totalOptions,
+      );
+
+      let lastError: unknown;
+
+      for (const [index, optionItem] of routerOptions.entries()) {
+        const attempt = index + 1;
+        const {
+          channelId,
+          id: resolvedApiType,
+          remark,
+          runtime,
+        } = this.createRuntimeFromOption(matchedRouter, optionItem);
+
+        try {
+          const result = await requestHandler(runtime);
+
+          if (totalOptions > 1 && attempt > 1) {
+            log(
+              'fallback success for model=%s attempt=%d/%d apiType=%s channelId=%s remark=%s',
+              model,
+              attempt,
+              totalOptions,
+              resolvedApiType,
+              channelId ?? '',
+              remark ?? '',
+            );
+          }
+
+          return result;
+        } catch (error) {
+          lastError = error;
+
+          if (attempt < totalOptions) {
+            log(
+              'attempt %d/%d failed (model=%s apiType=%s channelId=%s remark=%s), trying next',
+              attempt,
+              totalOptions,
+              model,
+              resolvedApiType,
+              channelId ?? '',
+              remark ?? '',
+            );
+          } else {
+            log(
+              'attempt %d/%d failed (model=%s apiType=%s channelId=%s remark=%s), no more fallbacks',
+              attempt,
+              totalOptions,
+              model,
+              resolvedApiType,
+              channelId ?? '',
+              remark ?? '',
+            );
+          }
+          console.error(error);
+        }
+      }
+
+      throw lastError ?? new Error('empty provider options');
+    }
+
+    async models() {
+      const resolvedRouters = await this.resolveRouters();
+      const runtimes = resolvedRouters.map((router) => {
+        const routerOptions = this.normalizeRouterOptions(router);
+        const { id: resolvedApiType, runtime } = this.createRuntimeFromOption(
+          router,
+          routerOptions[0],
+        );
+
+        return {
+          id: resolvedApiType,
           models: router.models,
           runtime,
         };
       });
-    }
 
-    // Check if it can match a specific model, otherwise default to using the last runtime
-    async getRuntimeByModel(model: string) {
-      const runtimes = await this.createRuntimesByRouters(model);
-
-      for (const runtimeItem of runtimes) {
-        const models = runtimeItem.models || [];
-        if (models.includes(model)) {
-          return runtimeItem.runtime;
+      if (modelsOption && typeof modelsOption === 'function') {
+        // If it's a functional configuration, use the last runtime's client to call the function
+        const lastRuntime = runtimes.at(-1)?.runtime;
+        if (lastRuntime && 'client' in lastRuntime) {
+          const modelList = await modelsOption({ client: (lastRuntime as any).client });
+          return await postProcessModelList(modelList);
         }
       }
 
-      return runtimes.at(-1)!.runtime;
+      return runtimes.at(-1)?.runtime.models?.();
     }
 
+    /**
+     * Try router options in order for chat requests.
+     * When options is an array, fall back to the next item on failure.
+     */
     async chat(payload: ChatStreamPayload, options?: ChatMethodOptions) {
       try {
-        const runtime = await this.getRuntimeByModel(payload.model);
-        return await runtime.chat!(payload, options);
+        return await this.runWithFallback(payload.model, (runtime) =>
+          runtime.chat!(payload, options),
+        );
       } catch (e) {
         if (params.chatCompletion?.handleError) {
           const error = params.chatCompletion.handleError(e, this._options);
@@ -205,48 +380,26 @@ export const createRouterRuntime = ({
       }
     }
 
-    async generateObject(payload: GenerateObjectPayload, options?: GenerateObjectOptions) {
-      const runtime = await this.getRuntimeByModel(payload.model);
-      return runtime.generateObject!(payload, options);
-    }
-
     async createImage(payload: CreateImagePayload) {
-      const runtime = await this.getRuntimeByModel(payload.model);
-      return runtime.createImage!(payload);
+      return this.runWithFallback(payload.model, (runtime) => runtime.createImage!(payload));
     }
 
-    async textToImage(payload: TextToImagePayload) {
-      const runtime = await this.getRuntimeByModel(payload.model);
-      return runtime.textToImage!(payload);
-    }
-
-    async models() {
-      if (modelsOption && typeof modelsOption === 'function') {
-        // 延迟创建 runtimes
-        const runtimes = await this.createRuntimesByRouters();
-        // 如果是函数式配置，使用最后一个运行时的客户端来调用函数
-        const lastRuntime = runtimes.at(-1)?.runtime;
-        if (lastRuntime && 'client' in lastRuntime) {
-          const modelList = await modelsOption({ client: (lastRuntime as any).client });
-          return await postProcessModelList(modelList);
-        }
-      }
-
-      // 延迟创建 runtimes
-      const runtimes = await this.createRuntimesByRouters();
-      return runtimes.at(-1)?.runtime.models?.();
+    async generateObject(payload: GenerateObjectPayload, options?: GenerateObjectOptions) {
+      return this.runWithFallback(payload.model, (runtime) =>
+        runtime.generateObject!(payload, options),
+      );
     }
 
     async embeddings(payload: EmbeddingsPayload, options?: EmbeddingsOptions) {
-      const runtime = await this.getRuntimeByModel(payload.model);
-
-      return runtime.embeddings!(payload, options);
+      return this.runWithFallback(payload.model, (runtime) =>
+        runtime.embeddings!(payload, options),
+      );
     }
 
     async textToSpeech(payload: TextToSpeechPayload, options?: EmbeddingsOptions) {
-      const runtime = await this.getRuntimeByModel(payload.model);
-
-      return runtime.textToSpeech!(payload, options);
+      return this.runWithFallback(payload.model, (runtime) =>
+        runtime.textToSpeech!(payload, options),
+      );
     }
   };
 };

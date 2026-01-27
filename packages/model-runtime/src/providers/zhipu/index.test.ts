@@ -1,7 +1,7 @@
 // @vitest-environment node
-import { LobeOpenAICompatibleRuntime } from '@lobechat/model-runtime';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { LobeOpenAICompatibleRuntime } from '../../core/BaseAI';
 import { testProvider } from '../../providerTestUtils';
 import { LobeZhipuAI, params } from './index';
 
@@ -378,33 +378,6 @@ describe('LobeZhipuAI - custom features', () => {
         expect(instance['client'].chat.completions.create).toHaveBeenCalledWith(
           expect.objectContaining({
             thinking: { type: 'disabled' },
-          }),
-          expect.anything(),
-        );
-      });
-
-      it('should not include thinking for non-4.5 models', async () => {
-        await instance.chat({
-          messages: [{ content: 'Hello', role: 'user' }],
-          model: 'glm-4',
-          temperature: 0.5,
-          thinking: { type: 'enabled', budget_tokens: 1000 },
-        });
-
-        const callArgs = (instance['client'].chat.completions.create as any).mock.calls[0][0];
-        expect(callArgs.thinking).toBeUndefined();
-      });
-
-      it('should handle undefined thinking gracefully for 4.5 models', async () => {
-        await instance.chat({
-          messages: [{ content: 'Hello', role: 'user' }],
-          model: 'glm-4.5',
-          temperature: 0.5,
-        });
-
-        expect(instance['client'].chat.completions.create).toHaveBeenCalledWith(
-          expect.objectContaining({
-            thinking: { type: undefined },
           }),
           expect.anything(),
         );

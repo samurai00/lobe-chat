@@ -3,7 +3,6 @@ import { vi } from 'vitest';
 import { chatService } from '@/services/chat';
 import { messageService } from '@/services/message';
 import { agentChatConfigSelectors, agentSelectors } from '@/store/agent/selectors';
-import { sessionMetaSelectors } from '@/store/session/selectors';
 
 import { useChatStore } from '../../../../store';
 import { messageMapKey } from '../../../../utils/messageMapKey';
@@ -23,11 +22,15 @@ export const setupMockSelectors = (
     createMockAgentConfig(options.agentConfig),
   );
 
+  // Mock getAgentConfigById to return config for any agentId
+  const getAgentConfig = () => createMockAgentConfig(options.agentConfig);
+  vi.spyOn(agentSelectors, 'getAgentConfigById').mockImplementation(() => getAgentConfig);
+
   vi.spyOn(agentChatConfigSelectors, 'currentChatConfig').mockImplementation(() =>
     createMockChatConfig(options.chatConfig),
   );
 
-  vi.spyOn(sessionMetaSelectors, 'currentAgentMeta').mockImplementation(
+  vi.spyOn(agentSelectors, 'currentAgentMeta').mockImplementation(
     () => options.agentMeta || { tags: [] },
   );
 };
@@ -35,11 +38,16 @@ export const setupMockSelectors = (
 /**
  * Setup store state with messages
  */
-export const setupStoreWithMessages = (messages: any[], sessionId = TEST_IDS.SESSION_ID) => {
+export const setupStoreWithMessages = (
+  messages: any[],
+  sessionId = TEST_IDS.SESSION_ID,
+  topicId: string | null | undefined = TEST_IDS.TOPIC_ID,
+) => {
   useChatStore.setState({
-    activeId: sessionId,
+    activeAgentId: sessionId,
+    activeTopicId: topicId ?? undefined,
     messagesMap: {
-      [messageMapKey(sessionId)]: messages,
+      [messageMapKey({ agentId: sessionId, topicId: topicId ?? undefined })]: messages,
     },
   });
 };
@@ -59,19 +67,25 @@ export const createMockAbortController = () => {
 export const spyOnMessageService = () => {
   const createMessageSpy = vi
     .spyOn(messageService, 'createMessage')
-    .mockResolvedValue(TEST_IDS.NEW_MESSAGE_ID);
+    .mockResolvedValue({ id: TEST_IDS.NEW_MESSAGE_ID, messages: [] });
   const updateMessageSpy = vi
     .spyOn(messageService, 'updateMessage')
     .mockResolvedValue({ messages: [], success: true });
-  const removeMessageSpy = vi.spyOn(messageService, 'removeMessage').mockResolvedValue(undefined);
+  const updateMessageMetadataSpy = vi
+    .spyOn(messageService, 'updateMessageMetadata')
+    .mockResolvedValue({ messages: [], success: true });
+  const removeMessageSpy = vi
+    .spyOn(messageService, 'removeMessage')
+    .mockResolvedValue(undefined as any);
   const updateMessageErrorSpy = vi
     .spyOn(messageService, 'updateMessageError')
-    .mockResolvedValue(undefined);
+    .mockResolvedValue(undefined as any);
 
   return {
     createMessageSpy,
     removeMessageSpy,
     updateMessageErrorSpy,
+    updateMessageMetadataSpy,
     updateMessageSpy,
   };
 };
@@ -96,10 +110,8 @@ export const resetTestEnvironment = () => {
   vi.clearAllMocks();
   useChatStore.setState(
     {
-      activeId: TEST_IDS.SESSION_ID,
+      activeAgentId: TEST_IDS.SESSION_ID,
       activeTopicId: TEST_IDS.TOPIC_ID,
-      chatLoadingIds: [],
-      chatLoadingIdsAbortController: undefined,
       messagesMap: {},
       toolCallingStreamIds: {},
     },

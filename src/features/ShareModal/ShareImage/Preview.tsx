@@ -1,61 +1,64 @@
 import { ModelTag } from '@lobehub/icons';
-import { Avatar, Markdown } from '@lobehub/ui';
-import { ChatHeaderTitle } from '@lobehub/ui/chat';
+import { Avatar, Flexbox, Markdown, Text } from '@lobehub/ui';
+import { cx } from 'antd-style';
 import { memo } from 'react';
-import { useTranslation } from 'react-i18next';
-import { Flexbox } from 'react-layout-kit';
 
 import { ProductLogo } from '@/components/Branding';
 import PluginTag from '@/features/PluginTag';
 import { useAgentStore } from '@/store/agent';
-import { agentSelectors } from '@/store/agent/selectors';
-import { useSessionStore } from '@/store/session';
-import { sessionMetaSelectors, sessionSelectors } from '@/store/session/selectors';
+import { agentSelectors, builtinAgentSelectors } from '@/store/agent/selectors';
 
 import pkg from '../../../../package.json';
-import { useContainerStyles } from '../style';
+import { containerStyles } from '../style';
 import ChatList from './ChatList';
-import { useStyles } from './style';
-import { FieldType } from './type';
+import { styles } from './style';
+import { WidthMode } from './type';
+import { type FieldType } from './type';
 
 const Preview = memo<FieldType & { title?: string }>(
-  ({ title, withSystemRole, withBackground, withFooter }) => {
-    const [model, plugins, systemRole] = useAgentStore((s) => [
+  ({ title, withSystemRole, withBackground, withFooter, widthMode }) => {
+    const [model, plugins, systemRole, isInbox, avatar, backgroundColor] = useAgentStore((s) => [
       agentSelectors.currentAgentModel(s),
       agentSelectors.displayableAgentPlugins(s),
       agentSelectors.currentAgentSystemRole(s),
-    ]);
-    const [isInbox, description, avatar, backgroundColor] = useSessionStore((s) => [
-      sessionSelectors.isInboxSession(s),
-      sessionMetaSelectors.currentAgentDescription(s),
-      sessionMetaSelectors.currentAgentAvatar(s),
-      sessionMetaSelectors.currentAgentBackgroundColor(s),
+      builtinAgentSelectors.isInboxAgent(s),
+      agentSelectors.currentAgentDescription(s),
+      agentSelectors.currentAgentAvatar(s),
+      agentSelectors.currentAgentBackgroundColor(s),
     ]);
 
-    const { t } = useTranslation('chat');
-    const { styles } = useStyles(withBackground);
-    const { styles: containerStyles } = useContainerStyles();
-
-    const displayTitle = isInbox ? t('inbox.title') : title;
-    const displayDesc = isInbox ? t('inbox.desc') : description;
+    const displayTitle = isInbox ? 'Lobe AI' : title;
 
     return (
-      <div className={containerStyles.preview}>
+      <div
+        className={cx(
+          containerStyles.preview,
+          widthMode === WidthMode.Narrow
+            ? containerStyles.previewNarrow
+            : containerStyles.previewWide,
+        )}
+      >
         <div className={withBackground ? styles.background : undefined} id={'preview'}>
-          <Flexbox className={styles.container} gap={16}>
+          <Flexbox
+            className={cx(styles.container, withBackground && styles.container_withBackground_true)}
+            gap={16}
+          >
             <div className={styles.header}>
-              <Flexbox align={'flex-start'} gap={12} horizontal>
-                <Avatar avatar={avatar} background={backgroundColor} size={40} title={title} />
-                <ChatHeaderTitle
-                  desc={displayDesc}
-                  tag={
-                    <Flexbox gap={4} horizontal>
-                      <ModelTag model={model} />
-                      {plugins?.length > 0 && <PluginTag plugins={plugins} />}
-                    </Flexbox>
-                  }
-                  title={displayTitle}
+              <Flexbox align={'center'} gap={12} horizontal>
+                <Avatar
+                  avatar={avatar}
+                  background={backgroundColor}
+                  shape={'square'}
+                  size={28}
+                  title={title}
                 />
+                <Text fontSize={16} strong>
+                  {displayTitle}
+                </Text>
+                <Flexbox gap={4} horizontal>
+                  <ModelTag model={model} />
+                  {plugins?.length > 0 && <PluginTag plugins={plugins} />}
+                </Flexbox>
               </Flexbox>
               {withSystemRole && systemRole && (
                 <div className={styles.role}>

@@ -6,18 +6,19 @@ import { MESSAGE_CANCEL_FLAT } from '@/const/message';
 import { shareService } from '@/services/share';
 import { userService } from '@/services/user';
 import type { UserStore } from '@/store/user';
-import { LobeAgentSettings } from '@/types/session';
+import { type LobeAgentSettings } from '@/types/session';
 import {
-  SystemAgentItem,
-  UserGeneralConfig,
-  UserKeyVaults,
-  UserSettings,
-  UserSystemAgentConfigKey,
+  type SystemAgentItem,
+  type UserGeneralConfig,
+  type UserKeyVaults,
+  type UserSettings,
+  type UserSystemAgentConfigKey,
 } from '@/types/user/settings';
 import { difference } from '@/utils/difference';
 import { merge } from '@/utils/merge';
 
 export interface UserSettingsAction {
+  addToolToAllowList: (toolKey: string) => Promise<void>;
   importAppSettings: (settings: UserSettings) => Promise<void>;
   importUrlShareSettings: (settingsParams: string | null) => Promise<void>;
   internal_createSignal: () => AbortController;
@@ -25,6 +26,10 @@ export interface UserSettingsAction {
   setSettings: (settings: PartialDeep<UserSettings>) => Promise<void>;
   updateDefaultAgent: (agent: PartialDeep<LobeAgentSettings>) => Promise<void>;
   updateGeneralConfig: (settings: Partial<UserGeneralConfig>) => Promise<void>;
+  updateHumanIntervention: (config: {
+    allowList?: string[];
+    approvalMode?: 'auto-run' | 'allow-list' | 'manual';
+  }) => Promise<void>;
   updateKeyVaults: (settings: Partial<UserKeyVaults>) => Promise<void>;
 
   updateSystemAgent: (
@@ -39,6 +44,20 @@ export const createSettingsSlice: StateCreator<
   [],
   UserSettingsAction
 > = (set, get) => ({
+  addToolToAllowList: async (toolKey) => {
+    const currentAllowList = get().settings.tool?.humanIntervention?.allowList || [];
+
+    if (currentAllowList.includes(toolKey)) return;
+
+    await get().setSettings({
+      tool: {
+        humanIntervention: {
+          allowList: [...currentAllowList, toolKey],
+        },
+      },
+    });
+  },
+
   importAppSettings: async (importAppSettings) => {
     const { setSettings } = get();
 
@@ -84,6 +103,17 @@ export const createSettingsSlice: StateCreator<
     if (isEqual(prevSetting, nextSettings)) return;
 
     const diffs = difference(nextSettings, defaultSettings);
+
+    // When user resets a field to default value, we need to explicitly include it in diffs
+    // to override the previously saved non-default value in the backend
+    const changedFields = difference(nextSettings, prevSetting);
+    for (const key of Object.keys(changedFields)) {
+      // Only handle fields that were previously set by user (exist in prevSetting)
+      if (key in prevSetting && !(key in diffs)) {
+        (diffs as any)[key] = (nextSettings as any)[key];
+      }
+    }
+
     set({ settings: diffs }, false, 'optimistic_updateSettings');
 
     const abortController = get().internal_createSignal();
@@ -95,6 +125,14 @@ export const createSettingsSlice: StateCreator<
   },
   updateGeneralConfig: async (general) => {
     await get().setSettings({ general });
+  },
+  updateHumanIntervention: async (config) => {
+    const current = get().settings.tool?.humanIntervention || {};
+    await get().setSettings({
+      tool: {
+        humanIntervention: { ...current, ...config },
+      },
+    });
   },
   updateKeyVaults: async (keyVaults) => {
     await get().setSettings({ keyVaults });

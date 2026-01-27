@@ -1,47 +1,55 @@
 import { Blocks } from 'lucide-react';
-import { Suspense, memo, useState } from 'react';
+import { Suspense, memo, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import PluginStore from '@/features/PluginStore';
+import { createSkillStoreModal } from '@/features/SkillStore';
 import { useModelSupportToolUse } from '@/hooks/useModelSupportToolUse';
 import { useAgentStore } from '@/store/agent';
-import { agentSelectors } from '@/store/agent/selectors';
-import { featureFlagsSelectors, useServerConfigStore } from '@/store/serverConfig';
+import { agentByIdSelectors } from '@/store/agent/selectors';
 
+import { useAgentId } from '../../hooks/useAgentId';
 import Action from '../components/Action';
+import PopoverContent from './PopoverContent';
 import { useControls } from './useControls';
 
 const Tools = memo(() => {
   const { t } = useTranslation('setting');
-  const [modalOpen, setModalOpen] = useState(false);
   const [updating, setUpdating] = useState(false);
-  const items = useControls({ setModalOpen, setUpdating });
-  const { enablePlugins } = useServerConfigStore(featureFlagsSelectors);
+  const { marketItems } = useControls({
+    setUpdating,
+  });
 
-  const model = useAgentStore(agentSelectors.currentAgentModel);
-  const provider = useAgentStore(agentSelectors.currentAgentModelProvider);
+  const agentId = useAgentId();
+  const model = useAgentStore((s) => agentByIdSelectors.getAgentModelById(agentId)(s));
+  const provider = useAgentStore((s) => agentByIdSelectors.getAgentModelProviderById(agentId)(s));
 
   const enableFC = useModelSupportToolUse(model, provider);
 
-  if (!enablePlugins) return null;
+  const handleOpenStore = useCallback(() => {
+    createSkillStoreModal();
+  }, []);
+
   if (!enableFC)
     return <Action disabled icon={Blocks} showTooltip={true} title={t('tools.disabled')} />;
 
   return (
     <Suspense fallback={<Action disabled icon={Blocks} title={t('tools.title')} />}>
       <Action
-        dropdown={{
-          maxHeight: 500,
-          maxWidth: 480,
-          menu: { items },
-          minWidth: 320,
-        }}
         icon={Blocks}
         loading={updating}
+        popover={{
+          content: <PopoverContent items={marketItems} onOpenStore={handleOpenStore} />,
+          maxWidth: 320,
+          minWidth: 320,
+          styles: {
+            content: {
+              padding: 0,
+            },
+          },
+        }}
         showTooltip={false}
         title={t('tools.title')}
       />
-      <PluginStore open={modalOpen} setOpen={setModalOpen} />
     </Suspense>
   );
 });

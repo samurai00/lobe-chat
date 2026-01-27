@@ -32,7 +32,7 @@ pnpm install-isolated
 pnpm electron:dev
 
 # Type checking
-pnpm typecheck
+pnpm type-check
 
 # Run tests
 pnpm test
@@ -66,9 +66,9 @@ cp .env.desktop .env
 pnpm electron:dev # Start with hot reload
 
 # 2. Code Quality
-pnpm lint      # ESLint checking
-pnpm format    # Prettier formatting
-pnpm typecheck # TypeScript validation
+pnpm lint       # ESLint checking
+pnpm format     # Prettier formatting
+pnpm type-check # TypeScript validation
 
 # 3. Testing
 pnpm test # Run Vitest tests
@@ -183,9 +183,16 @@ The `App.ts` class orchestrates the entire application lifecycle through key pha
 #### 🔌 Dependency Injection & Event System
 
 - **IoC Container** - WeakMap-based container for decorated controller methods
-- **Decorator Registration** - `@ipcClientEvent` and `@ipcServerEvent` decorators
+- **Typed IPC Decorators** - `@IpcMethod` wires controller methods into type-safe channels
 - **Automatic Event Mapping** - Events registered during controller loading
 - **Service Locator** - Type-safe service and controller retrieval
+
+##### 🧠 Type-Safe IPC Flow
+
+- **Async Context Propagation** - `src/main/utils/ipc/base.ts` captures the `IpcContext` with `AsyncLocalStorage`, so controller logic can call `getIpcContext()` anywhere inside an IPC handler without explicitly threading arguments.
+- **Service Constructors Registry** - `src/main/controllers/registry.ts` exports `controllerIpcConstructors` and `DesktopIpcServices`, enabling automatic typing of renderer IPC proxies.
+- **Renderer Proxy Helper** - `src/utils/electron/ipc.ts` exposes `ensureElectronIpc()` which lazily builds a proxy on top of `window.electronAPI.invoke`, giving React/Next.js code a type-safe API surface without exposing raw proxies in preload.
+- **Shared Typings Package** - `apps/desktop/src/main/exports.d.ts` augments `@lobechat/electron-client-ipc` so every package can consume `DesktopIpcServices` without importing desktop business code directly.
 
 #### 🪟 Window Management
 
@@ -235,6 +242,7 @@ The `App.ts` class orchestrates the entire application lifecycle through key pha
 
 #### 🎮 Controller Pattern
 
+- **Typed IPC Decorators** - Controllers extend `ControllerModule` and expose renderer methods via `@IpcMethod`
 - **IPC Event Handling** - Processes events from renderer with decorator-based registration
 - **Lifecycle Hooks** - `beforeAppReady` and `afterAppReady` for initialization phases
 - **Type-Safe Communication** - Strong typing for all IPC events and responses
@@ -255,6 +263,19 @@ The `App.ts` class orchestrates the entire application lifecycle through key pha
 - **Type-Safe Events** - TypeScript interfaces for all event parameters
 - **Context Awareness** - Events include sender context for window-specific operations
 - **Error Propagation** - Centralized error handling with proper status codes
+
+##### 🧩 Renderer IPC Helper
+
+Renderer code uses a lightweight proxy generated at runtime to keep IPC calls type-safe without exposing raw Electron objects through `contextBridge`. Use the helper exported from `src/utils/electron/ipc.ts` to access the main-process services:
+
+```ts
+import { ensureElectronIpc } from '@/utils/electron/ipc';
+
+const ipc = ensureElectronIpc();
+await ipc.windows.openSettingsWindow({ tab: 'provider' });
+```
+
+The helper internally builds a proxy on top of `window.electronAPI.invoke`, so no proxy objects need to be cloned across the preload boundary.
 
 #### 🛡️ Security Features
 
@@ -277,7 +298,7 @@ tests/                                       # Integration tests
 ```bash
 pnpm test       # Run all tests
 pnpm test:watch # Watch mode
-pnpm typecheck  # Type validation
+pnpm type-check # Type validation
 ```
 
 ### Test Coverage

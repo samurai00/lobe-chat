@@ -1,6 +1,6 @@
 import { DEFAULT_FILES_CONFIG } from '@/const/settings/knowledge';
-import { SystemEmbeddingConfig } from '@/types/knowledgeBase';
-import { FilesConfig } from '@/types/user/settings/filesConfig';
+import { type SystemEmbeddingConfig } from '@/types/knowledgeBase';
+import { type FilesConfig } from '@/types/user/settings/filesConfig';
 
 const protectedKeys = Object.keys({
   embedding_model: null,
@@ -12,7 +12,7 @@ export const parseFilesConfig = (envString: string = ''): SystemEmbeddingConfig 
   if (!envString) return DEFAULT_FILES_CONFIG;
   const config: FilesConfig = {} as any;
 
-  // 处理全角逗号和多余空格
+  // Handle full-width commas and extra spaces
   let envValue = envString.replaceAll('，', ',').trim();
 
   const pairs = envValue.split(',');

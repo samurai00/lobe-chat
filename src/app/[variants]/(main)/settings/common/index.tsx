@@ -1,17 +1,19 @@
+import { useTranslation } from 'react-i18next';
+
+import SettingHeader from '@/app/[variants]/(main)/settings/features/SettingHeader';
+
 import Appearance from './features/Appearance';
-import ChatAppearance from './features/ChatAppearance';
 import Common from './features/Common/Common';
 
 const Page = () => {
+  const { t } = useTranslation('setting');
   return (
     <>
-      <Common/>
+      <SettingHeader title={t('tab.common')} />
+      <Common />
       <Appearance />
-      <ChatAppearance />
     </>
   );
 };
-
-Page.displayName = 'CommonSetting';
 
 export default Page;

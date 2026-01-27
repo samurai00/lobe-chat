@@ -1,4 +1,4 @@
-import { OpenAIChatMessage, UIChatMessage } from '@lobechat/types';
+import { type OpenAIChatMessage, type UIChatMessage } from '@lobechat/types';
 
 import { encodeAsync } from '@/utils/tokenizer';
 
@@ -13,14 +13,11 @@ export const getMessageById = (
   const directMatch = messages.find((m) => m.id === id);
   if (directMatch) return directMatch;
 
-  // If not found, search in group message children (blocks)
+  // If not found, search in agentCouncil members
   for (const message of messages) {
-    if (message.role === 'group' && message.children) {
-      const blockMatch = message.children.find((block) => block.id === id);
-      if (blockMatch) {
-        // Return the block with parentId set to group message ID
-        return { ...blockMatch, parentId: message.id } as UIChatMessage;
-      }
+    if (message.role === 'agentCouncil' && (message as any).members) {
+      const member = (message as any).members.find((m: UIChatMessage) => m.id === id);
+      if (member) return member;
     }
   }
 

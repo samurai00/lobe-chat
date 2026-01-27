@@ -1,11 +1,14 @@
-import { createStyles } from 'antd-style';
+import { Button, Flexbox, Popover } from '@lobehub/ui';
+import { Space } from 'antd';
+import { createStaticStyles, cssVar } from 'antd-style';
+import { ExternalLink, FolderOpen } from 'lucide-react';
 import React from 'react';
-import { Flexbox } from 'react-layout-kit';
+import { useTranslation } from 'react-i18next';
 
 import FileIcon from '@/components/FileIcon';
 import { localFileService } from '@/services/electron/localFileService';
 
-const useStyles = createStyles(({ css, token }) => ({
+const styles = createStaticStyles(({ css }) => ({
   container: css`
     cursor: pointer;
 
@@ -13,11 +16,11 @@ const useStyles = createStyles(({ css, token }) => ({
     padding-inline: 4px 8px;
     border-radius: 4px;
 
-    color: ${token.colorTextSecondary};
+    color: ${cssVar.colorText};
 
     :hover {
-      color: ${token.colorText};
-      background: ${token.colorFillTertiary};
+      color: ${cssVar.colorText};
+      background: ${cssVar.colorFillTertiary};
     }
   `,
   title: css`
@@ -38,20 +41,25 @@ interface LocalFileProps {
 }
 
 export const LocalFile = ({ name, path, isDirectory = false }: LocalFileProps) => {
-  const { styles } = useStyles();
-  const handleClick = () => {
-    if (!path) return;
+  const { t } = useTranslation('components');
 
+  const handleOpenFile = () => {
+    if (!path) return;
     localFileService.openLocalFileOrFolder(path, isDirectory);
   };
 
-  return (
+  const handleOpenFolder = () => {
+    if (!path) return;
+    localFileService.openFileFolder(path);
+  };
+
+  const fileContent = (
     <Flexbox
       align={'center'}
       className={styles.container}
       gap={4}
       horizontal
-      onClick={handleClick}
+      onClick={isDirectory ? handleOpenFile : undefined}
       style={{ display: 'inline-flex', verticalAlign: 'middle' }}
     >
       <FileIcon fileName={name} isDirectory={isDirectory} size={22} variant={'raw'} />
@@ -59,5 +67,44 @@ export const LocalFile = ({ name, path, isDirectory = false }: LocalFileProps) =
         <div className={styles.title}>{name}</div>
       </Flexbox>
     </Flexbox>
+  );
+
+  // Directory: no popover, just click to open
+  if (isDirectory) {
+    return fileContent;
+  }
+
+  // File: show popover with two actions
+  const popoverContent = (
+    <Space.Compact>
+      <Button
+        icon={ExternalLink}
+        onClick={handleOpenFile}
+        size="small"
+        title={t('LocalFile.action.open')}
+      >
+        {t('LocalFile.action.open')}
+      </Button>
+      <Button
+        icon={FolderOpen}
+        onClick={handleOpenFolder}
+        size="small"
+        title={t('LocalFile.action.showInFolder')}
+      >
+        {t('LocalFile.action.showInFolder')}
+      </Button>
+    </Space.Compact>
+  );
+
+  return (
+    <Popover
+      content={popoverContent}
+      styles={{
+        content: { padding: 0 },
+      }}
+      trigger="hover"
+    >
+      {fileContent}
+    </Popover>
   );
 };

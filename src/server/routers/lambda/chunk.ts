@@ -1,11 +1,18 @@
 import { DEFAULT_FILE_EMBEDDING_MODEL_ITEM } from '@lobechat/const';
-import { SemanticSearchSchema } from '@lobechat/types';
+import {
+  type ChatSemanticSearchChunk,
+  type FileSearchResult,
+  SemanticSearchSchema,
+} from '@lobechat/types';
 import { TRPCError } from '@trpc/server';
 import { inArray } from 'drizzle-orm';
+import pMap from 'p-map';
 import { z } from 'zod';
 
+import { checkBudgetsUsage } from '@/business/server/trpc-middlewares/lambda';
 import { AsyncTaskModel } from '@/database/models/asyncTask';
 import { ChunkModel } from '@/database/models/chunk';
+import { DocumentModel } from '@/database/models/document';
 import { EmbeddingModel } from '@/database/models/embedding';
 import { FileModel } from '@/database/models/file';
 import { MessageModel } from '@/database/models/message';
@@ -13,8 +20,9 @@ import { knowledgeBaseFiles } from '@/database/schemas';
 import { authedProcedure, router } from '@/libs/trpc/lambda';
 import { keyVaults, serverDatabase } from '@/libs/trpc/lambda/middleware';
 import { getServerDefaultFilesConfig } from '@/server/globalConfig';
-import { initModelRuntimeWithUserPayload } from '@/server/modules/ModelRuntime';
+import { initModelRuntimeFromDB } from '@/server/modules/ModelRuntime';
 import { ChunkService } from '@/server/services/chunk';
+import { DocumentService } from '@/server/services/document';
 
 const chunkProcedure = authedProcedure
   .use(serverDatabase)
@@ -27,12 +35,58 @@ const chunkProcedure = authedProcedure
         asyncTaskModel: new AsyncTaskModel(ctx.serverDB, ctx.userId),
         chunkModel: new ChunkModel(ctx.serverDB, ctx.userId),
         chunkService: new ChunkService(ctx.serverDB, ctx.userId),
+        documentModel: new DocumentModel(ctx.serverDB, ctx.userId),
+        documentService: new DocumentService(ctx.serverDB, ctx.userId),
         embeddingModel: new EmbeddingModel(ctx.serverDB, ctx.userId),
         fileModel: new FileModel(ctx.serverDB, ctx.userId),
         messageModel: new MessageModel(ctx.serverDB, ctx.userId),
       },
     });
   });
+
+/**
+ * Group chunks by file and calculate relevance scores
+ */
+const groupAndRankFiles = (chunks: ChatSemanticSearchChunk[], topK: number): FileSearchResult[] => {
+  const fileMap = new Map<string, FileSearchResult>();
+
+  // Group chunks by file
+  for (const chunk of chunks) {
+    const fileId = chunk.fileId || 'unknown';
+    const fileName = chunk.fileName || `File ${fileId}`;
+
+    if (!fileMap.has(fileId)) {
+      fileMap.set(fileId, {
+        fileId,
+        fileName,
+        relevanceScore: 0,
+        topChunks: [],
+      });
+    }
+
+    const fileResult = fileMap.get(fileId)!;
+    fileResult.topChunks.push({
+      id: chunk.id,
+      similarity: chunk.similarity,
+      text: chunk.text || '',
+    });
+  }
+
+  // Calculate relevance score for each file (average of top 3 chunks)
+  for (const fileResult of fileMap.values()) {
+    fileResult.topChunks.sort((a, b) => b.similarity - a.similarity);
+    const top3 = fileResult.topChunks.slice(0, 3);
+    fileResult.relevanceScore =
+      top3.reduce((sum, chunk) => sum + chunk.similarity, 0) / top3.length;
+    // Keep only top chunks per file
+    fileResult.topChunks = fileResult.topChunks.slice(0, 3);
+  }
+
+  // Sort files by relevance score and return top K
+  return Array.from(fileMap.values())
+    .sort((a, b) => b.relevanceScore - a.relevanceScore)
+    .slice(0, topK);
+};
 
 export const chunkRouter = router({
   createEmbeddingChunksTask: chunkProcedure
@@ -42,7 +96,7 @@ export const chunkRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const asyncTaskId = await ctx.chunkService.asyncEmbeddingFileChunks(input.id, ctx.jwtPayload);
+      const asyncTaskId = await ctx.chunkService.asyncEmbeddingFileChunks(input.id);
 
       return { id: asyncTaskId, success: true };
     }),
@@ -55,11 +109,7 @@ export const chunkRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const asyncTaskId = await ctx.chunkService.asyncParseFileToChunks(
-        input.id,
-        ctx.jwtPayload,
-        input.skipExist,
-      );
+      const asyncTaskId = await ctx.chunkService.asyncParseFileToChunks(input.id, input.skipExist);
 
       return { id: asyncTaskId, success: true };
     }),
@@ -76,6 +126,71 @@ export const chunkRouter = router({
         items: await ctx.chunkModel.findByFileId(input.id, input.cursor || 0),
         nextCursor: input.cursor ? input.cursor + 1 : 1,
       };
+    }),
+
+  getFileContents: chunkProcedure
+    .input(
+      z.object({
+        fileIds: z.array(z.string()),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      return await pMap(
+        input.fileIds,
+        async (fileId) => {
+          // 1. Find file information
+          const file = await ctx.fileModel.findById(fileId);
+          if (!file) {
+            return {
+              content: '',
+              error: 'File not found',
+              fileId,
+              filename: `Unknown file ${fileId}`,
+            };
+          }
+
+          // 2. Find existing parsed document
+          let document:
+            | {
+                content: string | null;
+                metadata: Record<string, any> | null;
+              }
+            | undefined = await ctx.documentModel.findByFileId(fileId);
+
+          // 3. If not exists, parse the file
+          if (!document) {
+            try {
+              document = await ctx.documentService.parseFile(fileId);
+            } catch (error) {
+              return {
+                content: '',
+                error: `Failed to parse file: ${(error as Error).message}`,
+                fileId,
+                filename: file.name,
+              };
+            }
+          }
+
+          // 4. Calculate file statistics
+          const content = document.content || '';
+          const lines = content.split('\n');
+          const totalLineCount = lines.length;
+          const totalCharCount = content.length;
+          const preview = lines.slice(0, 5).join('\n');
+
+          // 5. Return content with details
+          return {
+            content,
+            fileId,
+            filename: file.name,
+            metadata: document.metadata,
+            preview,
+            totalCharCount,
+            totalLineCount,
+          };
+        },
+        { concurrency: 3 },
+      );
     }),
 
   retryParseFileTask: chunkProcedure
@@ -95,7 +210,7 @@ export const chunkRouter = router({
       }
 
       // 2. create a new asyncTask for chunking
-      const asyncTaskId = await ctx.chunkService.asyncParseFileToChunks(input.id, ctx.jwtPayload);
+      const asyncTaskId = await ctx.chunkService.asyncParseFileToChunks(input.id);
 
       return { id: asyncTaskId, success: true };
     }),
@@ -107,17 +222,18 @@ export const chunkRouter = router({
         query: z.string(),
       }),
     )
+    .use(checkBudgetsUsage)
     .mutation(async ({ ctx, input }) => {
       const { model, provider } =
         getServerDefaultFilesConfig().embeddingModel || DEFAULT_FILE_EMBEDDING_MODEL_ITEM;
-      const agentRuntime = await initModelRuntimeWithUserPayload(provider, ctx.jwtPayload);
+      // Read user's provider config from database
+      const agentRuntime = await initModelRuntimeFromDB(ctx.serverDB, ctx.userId, provider);
 
       const embeddings = await agentRuntime.embeddings({
         dimensions: 1024,
         input: input.query,
         model,
       });
-      console.timeEnd('embedding');
 
       return ctx.chunkModel.semanticSearch({
         embedding: embeddings![0],
@@ -130,47 +246,23 @@ export const chunkRouter = router({
     .input(SemanticSearchSchema)
     .mutation(async ({ ctx, input }) => {
       try {
-        const item = await ctx.messageModel.findMessageQueriesById(input.messageId);
         const { model, provider } =
           getServerDefaultFilesConfig().embeddingModel || DEFAULT_FILE_EMBEDDING_MODEL_ITEM;
         let embedding: number[];
-        let ragQueryId: string;
 
-        // if there is no message rag or it's embeddings, then we need to create one
-        if (!item || !item.embeddings) {
-          // TODO: need to support customize
-          const agentRuntime = await initModelRuntimeWithUserPayload(provider, ctx.jwtPayload);
+        // Read user's provider config from database
+        const modelRuntime = await initModelRuntimeFromDB(ctx.serverDB, ctx.userId, provider);
 
-          // slice content to make sure in the context window limit
-          const query =
-            input.rewriteQuery.length > 8000
-              ? input.rewriteQuery.slice(0, 8000)
-              : input.rewriteQuery;
+        // slice content to make sure in the context window limit
+        const query = input.query.length > 8000 ? input.query.slice(0, 8000) : input.query;
 
-          const embeddings = await agentRuntime.embeddings({
-            dimensions: 1024,
-            input: query,
-            model,
-          });
+        const embeddings = await modelRuntime.embeddings({
+          dimensions: 1024,
+          input: query,
+          model,
+        });
 
-          embedding = embeddings![0];
-          const embeddingsId = await ctx.embeddingModel.create({
-            embeddings: embedding,
-            model,
-          });
-
-          const result = await ctx.messageModel.createMessageQuery({
-            embeddingsId,
-            messageId: input.messageId,
-            rewriteQuery: input.rewriteQuery,
-            userQuery: input.userQuery,
-          });
-
-          ragQueryId = result.id;
-        } else {
-          embedding = item.embeddings;
-          ragQueryId = item.id;
-        }
+        embedding = embeddings![0];
 
         let finalFileIds = input.fileIds ?? [];
 
@@ -185,18 +277,41 @@ export const chunkRouter = router({
         const chunks = await ctx.chunkModel.semanticSearchForChat({
           embedding,
           fileIds: finalFileIds,
-          query: input.rewriteQuery,
+          query: input.query,
+          topK: input.topK,
         });
+
+        // Group chunks by file and calculate relevance scores
+        const fileResults = groupAndRankFiles(chunks, input.topK || 15);
 
         // TODO: need to rerank the chunks
 
-        return { chunks, queryId: ragQueryId };
+        return { chunks, fileResults };
       } catch (e) {
         console.error(e);
 
+        const error = e as any;
+        const errorType = error.errorType;
+
+        // Map business error types to appropriate HTTP status codes
+        if (errorType === 'InvalidProviderAPIKey') {
+          throw new TRPCError({
+            code: 'METHOD_NOT_SUPPORTED',
+            message: error.message || 'Invalid API key for embedding provider',
+          });
+        }
+
+        if (errorType === 'ProviderBizError') {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: error.message || 'Provider service error',
+          });
+        }
+
+        // For unknown errors, still return 500 but with proper message
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
-          message: (e as any).errorType || JSON.stringify(e),
+          message: error.message || errorType || 'Failed to perform semantic search',
         });
       }
     }),

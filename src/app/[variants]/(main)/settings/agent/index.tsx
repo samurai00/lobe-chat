@@ -1,78 +1,36 @@
 'use client';
 
-import { Tabs } from '@lobehub/ui';
-import { Skeleton } from 'antd';
-import { useTheme } from 'antd-style';
-import isEqual from 'fast-deep-equal';
-import { useQueryState } from 'nuqs';
-import { memo } from 'react';
+import { DEFAULT_REWRITE_QUERY } from '@lobechat/prompts';
+import { useTranslation } from 'react-i18next';
 
-import { INBOX_SESSION_ID } from '@/const/session';
-import { AgentSettings } from '@/features/AgentSetting';
-import { useCategory } from '@/features/AgentSetting/AgentCategory/useCategory';
-import { ChatSettingsTabs } from '@/store/global/initialState';
-import { useUserStore } from '@/store/user';
-import { settingsSelectors } from '@/store/user/selectors';
-import DesktopLayout from './_layout/Desktop'
-import MobileLayout from './_layout/Mobile'
+import SettingHeader from '@/app/[variants]/(main)/settings/features/SettingHeader';
+import { featureFlagsSelectors, useServerConfigStore } from '@/store/serverConfig';
 
-type AgentPageType = {
-  mobile?: boolean;
-}
+import DefaultAgentForm from './features/DefaultAgentForm';
+import SystemAgentForm from './features/SystemAgentForm';
 
-const Page = memo((props: AgentPageType) => {
-  const { mobile } = props
-  const cateItems = useCategory();
-  const [tab, setTab] = useQueryState('tab', {
-    defaultValue: ChatSettingsTabs.Prompt,
-  });
-  const config = useUserStore(settingsSelectors.defaultAgentConfig, isEqual);
-  const meta = useUserStore(settingsSelectors.defaultAgentMeta, isEqual);
-  const [updateAgent, isUserStateInit] = useUserStore((s) => [
-    s.updateDefaultAgent,
-    s.isUserStateInit,
-  ]);
-
-  const theme = useTheme();
-
-  if (!isUserStateInit) return <Skeleton active paragraph={{ rows: 5 }} title={false} />;
-
-
-  const PageContent = (
+const Page = () => {
+  const { t } = useTranslation('setting');
+  const { enableKnowledgeBase } = useServerConfigStore(featureFlagsSelectors);
+  return (
     <>
-      {mobile && (
-        <Tabs
-          activeKey={tab}
-          compact
-          items={cateItems as any}
-          onChange={(value) => setTab(value as ChatSettingsTabs)}
-          style={{
-            borderBottom: `1px solid ${theme.colorBorderSecondary}`,
-          }}
+      <SettingHeader title={t('tab.agent')} />
+      <DefaultAgentForm />
+      <SystemAgentForm systemAgentKey="topic" />
+      <SystemAgentForm systemAgentKey="generationTopic" />
+      <SystemAgentForm systemAgentKey="translation" />
+      <SystemAgentForm systemAgentKey="historyCompress" />
+      <SystemAgentForm systemAgentKey="agentMeta" />
+      {enableKnowledgeBase && (
+        <SystemAgentForm
+          allowCustomPrompt
+          allowDisable
+          defaultPrompt={DEFAULT_REWRITE_QUERY}
+          systemAgentKey="queryRewrite"
         />
       )}
-      <AgentSettings
-        config={config}
-        id={INBOX_SESSION_ID}
-        loading={!isUserStateInit}
-        meta={meta}
-        onConfigChange={(config) => {
-          updateAgent({ config });
-        }}
-        onMetaChange={(meta) => {
-          updateAgent({ meta });
-        }}
-        tab={tab as ChatSettingsTabs}
-      />
     </>
-  )
-
-  return mobile ? <MobileLayout>
-    {PageContent}
-  </MobileLayout> : <DesktopLayout>
-    {PageContent}</DesktopLayout>;
-});
-
-Page.displayName = 'AgentSetting';
+  );
+};
 
 export default Page;

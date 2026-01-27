@@ -5,7 +5,7 @@ import { FeatureFlagsSchema, evaluateFeatureFlag, mapFeatureFlagsEnvToState } fr
 describe('FeatureFlagsSchema', () => {
   it('should validate correct feature flags with boolean values', () => {
     const result = FeatureFlagsSchema.safeParse({
-      language_model_settings: false,
+      provider_settings: false,
       openai_api_key: true,
       openai_proxy_url: false,
       create_session: true,
@@ -98,23 +98,18 @@ describe('evaluateFeatureFlag', () => {
 describe('mapFeatureFlagsEnvToState', () => {
   it('should correctly map boolean feature flags to state', () => {
     const config = {
-      language_model_settings: false,
       provider_settings: true,
       openai_api_key: true,
       openai_proxy_url: false,
-      create_session: true,
       edit_agent: false,
-      dalle: true,
       ai_image: true,
       check_updates: true,
       welcome_suggest: true,
-      plugins: true,
       knowledge_base: false,
       rag_eval: true,
       market: true,
       speech_to_text: true,
       changelog: false,
-      pin_list: true,
       api_key_manage: false,
       cloud_promotion: true,
       commercial_hide_github: false,
@@ -125,14 +120,10 @@ describe('mapFeatureFlagsEnvToState', () => {
 
     expect(mappedState).toMatchObject({
       isAgentEditable: false,
-      showCreateSession: true,
-      showLLM: false,
       showProvider: true,
       showOpenAIApiKey: true,
       showOpenAIProxyUrl: false,
       showApiKeyManage: false,
-      enablePlugins: true,
-      showDalle: true,
       showAiImage: true,
       showChangelog: false,
       enableCheckUpdates: true,
@@ -141,7 +132,6 @@ describe('mapFeatureFlagsEnvToState', () => {
       enableRAGEval: true,
       showMarket: true,
       enableSTT: true,
-      showPinList: true,
       showCloudPromotion: true,
       hideGitHub: false,
       hideDocs: true,
@@ -160,8 +150,7 @@ describe('mapFeatureFlagsEnvToState', () => {
     const mappedState = mapFeatureFlagsEnvToState(config, userId);
 
     expect(mappedState.isAgentEditable).toBe(true); // user-123 is in allowlist
-    expect(mappedState.showCreateSession).toBe(false); // user-123 is not in allowlist
-    expect(mappedState.showDalle).toBe(true); // boolean true
+
     expect(mappedState.enableKnowledgeBase).toBe(true); // user-123 is in allowlist
   });
 
@@ -176,8 +165,6 @@ describe('mapFeatureFlagsEnvToState', () => {
     const mappedState = mapFeatureFlagsEnvToState(config, userId);
 
     expect(mappedState.isAgentEditable).toBe(false);
-    expect(mappedState.showCreateSession).toBe(false);
-    expect(mappedState.showDalle).toBe(true);
   });
 
   it('should return false for array flags when no user ID provided', () => {
@@ -189,7 +176,6 @@ describe('mapFeatureFlagsEnvToState', () => {
     const mappedState = mapFeatureFlagsEnvToState(config);
 
     expect(mappedState.isAgentEditable).toBe(false);
-    expect(mappedState.showCreateSession).toBe(true);
   });
 
   it('should handle mixed boolean and array values correctly', () => {
@@ -206,8 +192,7 @@ describe('mapFeatureFlagsEnvToState', () => {
     const mappedState = mapFeatureFlagsEnvToState(config, userId);
 
     expect(mappedState.isAgentEditable).toBe(true);
-    expect(mappedState.showCreateSession).toBe(true);
-    expect(mappedState.showDalle).toBe(false);
+
     expect(mappedState.showAiImage).toBe(false);
     expect(mappedState.enableKnowledgeBase).toBe(true);
     expect(mappedState.enableRAGEval).toBe(true);

@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 
 import {
   ChatGroupAgentItem,
@@ -35,6 +35,23 @@ export class ChatGroupModel {
     });
   }
 
+  /**
+   * Get a chat group by the forkedFromIdentifier stored in config
+   * @param forkedFromIdentifier - The source group's market identifier
+   * @returns group id if exists, null otherwise
+   */
+  async getGroupByForkedFromIdentifier(forkedFromIdentifier: string): Promise<string | null> {
+    const result = await this.db.query.chatGroups.findFirst({
+      columns: { id: true },
+      orderBy: [desc(chatGroups.updatedAt)],
+      where: and(
+        eq(chatGroups.userId, this.userId),
+        sql`${chatGroups.config}->>'forkedFromIdentifier' = ${forkedFromIdentifier}`,
+      ),
+    });
+    return result?.id ?? null;
+  }
+
   async queryWithMemberDetails(): Promise<any[]> {
     const groups = await this.query();
     if (groups.length === 0) return [];
@@ -58,7 +75,7 @@ export class ChatGroupModel {
 
     return groups.map((group) => ({
       ...group,
-      members: groupAgentMap.get(group.id) || [],
+      agents: groupAgentMap.get(group.id) || [],
     }));
   }
 
@@ -102,7 +119,6 @@ export class ChatGroupModel {
       agentId,
       chatGroupId: group.id,
       order: index,
-      role: 'assistant',
       userId: this.userId,
     }));
 
@@ -116,7 +132,7 @@ export class ChatGroupModel {
   async update(id: string, value: Partial<ChatGroupItem>): Promise<ChatGroupItem> {
     const [result] = await this.db
       .update(chatGroups)
-      .set({ ...value, updatedAt: new Date() })
+      .set(value)
       .where(and(eq(chatGroups.id, id), eq(chatGroups.userId, this.userId)))
       .returning();
 
@@ -144,17 +160,29 @@ export class ChatGroupModel {
     return result;
   }
 
-  async addAgentsToGroup(groupId: string, agentIds: string[]): Promise<ChatGroupAgentItem[]> {
+  /**
+   * Add multiple agents to a group.
+   * Automatically skips agents that are already in the group.
+   *
+   * @returns Object containing:
+   * - `added`: Agents that were newly added to the group
+   * - `existing`: Agent IDs that were already in the group (skipped)
+   */
+  async addAgentsToGroup(
+    groupId: string,
+    agentIds: string[],
+  ): Promise<{ added: NewChatGroupAgent[]; existing: string[] }> {
     const group = await this.findById(groupId);
     if (!group) throw new Error('Group not found');
 
     const existingAgents = await this.getGroupAgents(groupId);
-    const existingAgentIds = new Set(existingAgents.map((a) => a.id));
+    const existingAgentIds = new Set(existingAgents.map((a) => a.agentId));
 
     const newAgentIds = agentIds.filter((id) => !existingAgentIds.has(id));
+    const existingIds = agentIds.filter((id) => existingAgentIds.has(id));
 
     if (newAgentIds.length === 0) {
-      return [];
+      return { added: [], existing: existingIds };
     }
 
     const newAgents: NewChatGroupAgent[] = newAgentIds.map((agentId) => ({
@@ -164,13 +192,29 @@ export class ChatGroupModel {
       userId: this.userId,
     }));
 
-    return this.db.insert(chatGroupsAgents).values(newAgents).returning();
+    const added = await this.db.insert(chatGroupsAgents).values(newAgents).returning();
+
+    return { added, existing: existingIds };
   }
 
   async removeAgentFromGroup(groupId: string, agentId: string): Promise<void> {
     await this.db
       .delete(chatGroupsAgents)
       .where(and(eq(chatGroupsAgents.chatGroupId, groupId), eq(chatGroupsAgents.agentId, agentId)));
+  }
+
+  /**
+   * Batch remove multiple agents from a group.
+   * More efficient than calling removeAgentFromGroup multiple times.
+   */
+  async removeAgentsFromGroup(groupId: string, agentIds: string[]): Promise<void> {
+    if (agentIds.length === 0) return;
+
+    await this.db
+      .delete(chatGroupsAgents)
+      .where(
+        and(eq(chatGroupsAgents.chatGroupId, groupId), inArray(chatGroupsAgents.agentId, agentIds)),
+      );
   }
 
   async updateAgentInGroup(

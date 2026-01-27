@@ -1,18 +1,28 @@
 'use client';
 
-import { ActionIcon, ScrollShadow, Text } from '@lobehub/ui';
+import {
+  Accordion,
+  AccordionItem,
+  ActionIcon,
+  ContextMenuTrigger,
+  Flexbox,
+  Text,
+} from '@lobehub/ui';
 import isEqual from 'fast-deep-equal';
 import { ArrowDownUpIcon } from 'lucide-react';
-import { useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Flexbox } from 'react-layout-kit';
 
 import { aiProviderSelectors } from '@/store/aiInfra';
 import { useAiInfraStore } from '@/store/aiInfra/store';
+import { useGlobalStore } from '@/store/global';
+import { systemStatusSelectors } from '@/store/global/selectors';
 
+import Actions from './Actions';
 import All from './All';
 import ProviderItem from './Item';
 import SortProviderModal from './SortProviderModal';
+import { SortType, useProviderDropdownMenu } from './useDropdownMenu';
 
 const ProviderList = (props: {
   mobile?: boolean;
@@ -21,6 +31,27 @@ const ProviderList = (props: {
   const { onProviderSelect, mobile } = props;
   const { t } = useTranslation('modelProvider');
   const [open, setOpen] = useState(false);
+
+  // Accordion states - using array of active keys
+  const [expandedKeys, setExpandedKeys] = useState<string[]>(['enabled', 'custom', 'disabled']);
+
+  const [sortType, updateSystemStatus] = useGlobalStore((s) => [
+    systemStatusSelectors.disabledModelProvidersSortType(s),
+    s.updateSystemStatus,
+  ]);
+
+  const updateSortType = useCallback(
+    (newSortType: SortType) => {
+      updateSystemStatus({ disabledModelProvidersSortType: newSortType });
+    },
+    [updateSystemStatus],
+  );
+
+  const dropdownMenu = useProviderDropdownMenu({
+    onSortChange: updateSortType,
+    sortType: (sortType || SortType.Default) as SortType,
+  });
+
   const enabledModelProviderList = useAiInfraStore(
     aiProviderSelectors.enabledAiProviderList,
     isEqual,
@@ -30,46 +61,132 @@ const ProviderList = (props: {
     aiProviderSelectors.disabledAiProviderList,
     isEqual,
   );
+
+  const disabledCustomProviderList = useAiInfraStore(
+    aiProviderSelectors.disabledCustomAiProviderList,
+    isEqual,
+  );
+
+  // Sort model providers based on sort type
+  const sortedDisabledProviders = useMemo(() => {
+    const providers = [...disabledModelProviderList];
+    const currentSortType = (sortType || SortType.Default) as SortType;
+    switch (currentSortType) {
+      case SortType.Alphabetical: {
+        return providers.sort((a, b) => {
+          const cmpDisplay = (a.name || a.id).localeCompare(b.name || b.id);
+          if (cmpDisplay !== 0) return cmpDisplay;
+          return a.id.localeCompare(b.id);
+        });
+      }
+      case SortType.AlphabeticalDesc: {
+        return providers.sort((a, b) => {
+          const cmpDisplay = (b.name || a.id).localeCompare(a.name || b.id);
+          if (cmpDisplay !== 0) return cmpDisplay;
+          return b.id.localeCompare(a.id);
+        });
+      }
+      case SortType.Default: {
+        return providers;
+      }
+    }
+  }, [disabledModelProviderList, sortType]);
+
   return (
-    <ScrollShadow gap={4} height={'100%'} paddingInline={12} size={4} style={{ paddingBottom: 32 }}>
+    <Flexbox gap={4} paddingInline={4} style={{ paddingBottom: 32 }}>
       {!mobile && <All onClick={onProviderSelect} />}
-      <Flexbox
-        align={'center'}
-        horizontal
-        justify={'space-between'}
-        style={{ fontSize: 12, marginTop: 8 }}
-      >
-        <Text style={{ fontSize: 12 }} type={'secondary'}>
-          {t('menu.list.enabled')}
-        </Text>
-        <ActionIcon
-          icon={ArrowDownUpIcon}
-          onClick={() => {
-            setOpen(true);
+      {open && (
+        <SortProviderModal
+          defaultItems={enabledModelProviderList}
+          onCancel={() => {
+            setOpen(false);
           }}
-          size={'small'}
-          title={t('menu.sort')}
+          open={open}
         />
-        {open && (
-          <SortProviderModal
-            defaultItems={enabledModelProviderList}
-            onCancel={() => {
-              setOpen(false);
-            }}
-            open={open}
-          />
+      )}
+      <Accordion
+        expandedKeys={expandedKeys}
+        onExpandedChange={(keys) => setExpandedKeys(keys as string[])}
+      >
+        {/* Enabled Providers */}
+        <AccordionItem
+          action={
+            <div onClick={(e) => e.stopPropagation()}>
+              <ActionIcon
+                icon={ArrowDownUpIcon}
+                onClick={() => setOpen(true)}
+                size={'small'}
+                title={t('menu.sort')}
+              />
+            </div>
+          }
+          headerWrapper={(header) => <ContextMenuTrigger items={[]}>{header}</ContextMenuTrigger>}
+          itemKey="enabled"
+          paddingBlock={4}
+          paddingInline={'8px 4px'}
+          title={
+            <Text ellipsis fontSize={12} type={'secondary'} weight={500}>
+              {t('menu.list.enabled')}
+            </Text>
+          }
+        >
+          <Flexbox gap={4} paddingBlock={1}>
+            {enabledModelProviderList.map((item) => (
+              <ProviderItem {...item} key={item.id} onClick={onProviderSelect} />
+            ))}
+          </Flexbox>
+        </AccordionItem>
+
+        {/* Custom Providers */}
+        {disabledCustomProviderList.length > 0 && (
+          <AccordionItem
+            headerWrapper={(header) => <ContextMenuTrigger items={[]}>{header}</ContextMenuTrigger>}
+            itemKey="custom"
+            paddingBlock={4}
+            paddingInline={'8px 4px'}
+            title={
+              <Text ellipsis fontSize={12} type={'secondary'} weight={500}>
+                {t('menu.list.custom')}
+              </Text>
+            }
+          >
+            <Flexbox gap={4} paddingBlock={1}>
+              {disabledCustomProviderList.map((item) => (
+                <ProviderItem {...item} key={item.id} onClick={onProviderSelect} />
+              ))}
+            </Flexbox>
+          </AccordionItem>
         )}
-      </Flexbox>
-      {enabledModelProviderList.map((item) => (
-        <ProviderItem {...item} key={item.id} onClick={onProviderSelect} />
-      ))}
-      <Text style={{ fontSize: 12, marginTop: 8 }} type={'secondary'}>
-        {t('menu.list.disabled')}
-      </Text>
-      {disabledModelProviderList.map((item) => (
-        <ProviderItem {...item} key={item.id} onClick={onProviderSelect} />
-      ))}
-    </ScrollShadow>
+
+        {/* Disabled Providers */}
+        <AccordionItem
+          action={
+            disabledModelProviderList.length > 1 ? (
+              <Actions dropdownMenu={dropdownMenu} />
+            ) : undefined
+          }
+          headerWrapper={(header) => (
+            <ContextMenuTrigger items={disabledModelProviderList.length > 1 ? dropdownMenu : []}>
+              {header}
+            </ContextMenuTrigger>
+          )}
+          itemKey="disabled"
+          paddingBlock={4}
+          paddingInline={'8px 4px'}
+          title={
+            <Text ellipsis fontSize={12} type={'secondary'} weight={500}>
+              {t('menu.list.disabled')}
+            </Text>
+          }
+        >
+          <Flexbox gap={4} paddingBlock={1}>
+            {sortedDisabledProviders.map((item) => (
+              <ProviderItem {...item} key={item.id} onClick={onProviderSelect} />
+            ))}
+          </Flexbox>
+        </AccordionItem>
+      </Accordion>
+    </Flexbox>
   );
 };
 

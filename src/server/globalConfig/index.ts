@@ -1,3 +1,6 @@
+import { ENABLE_BUSINESS_FEATURES } from '@lobechat/business-const';
+
+import { klavisEnv } from '@/config/klavis';
 import { isDesktop } from '@/const/version';
 import { appEnv, getAppConfig } from '@/envs/app';
 import { authEnv } from '@/envs/auth';
@@ -5,19 +8,36 @@ import { fileEnv } from '@/envs/file';
 import { imageEnv } from '@/envs/image';
 import { knowledgeEnv } from '@/envs/knowledge';
 import { langfuseEnv } from '@/envs/langfuse';
+import { parseSSOProviders } from '@/libs/better-auth/utils/server';
 import { parseSystemAgent } from '@/server/globalConfig/parseSystemAgent';
-import { GlobalServerConfig } from '@/types/serverConfig';
+import { type GlobalServerConfig } from '@/types/serverConfig';
 import { cleanObject } from '@/utils/object';
 
 import { genServerAiProvidersConfig } from './genServerAiProviderConfig';
 import { parseAgentConfig } from './parseDefaultAgent';
 import { parseFilesConfig } from './parseFilesConfig';
+import { getPublicMemoryExtractionConfig } from './parseMemoryExtractionConfig';
+
+/**
+ * Get Better-Auth SSO providers list
+ * Parses AUTH_SSO_PROVIDERS and returns enabled providers
+ */
+const getBetterAuthSSOProviders = () => {
+  return parseSSOProviders(authEnv.AUTH_SSO_PROVIDERS);
+};
 
 export const getServerGlobalConfig = async () => {
-  const { ACCESS_CODES, DEFAULT_AGENT_CONFIG } = getAppConfig();
+  const { DEFAULT_AGENT_CONFIG } = getAppConfig();
 
   const config: GlobalServerConfig = {
     aiProvider: await genServerAiProvidersConfig({
+      ...(ENABLE_BUSINESS_FEATURES
+        ? {
+            lobehub: {
+              enabled: true,
+            },
+          }
+        : {}),
       azure: {
         enabledKey: 'ENABLED_AZURE_OPENAI',
         withDeploymentName: true,
@@ -33,9 +53,6 @@ export const getServerGlobalConfig = async () => {
       lmstudio: {
         fetchOnClient: isDesktop ? false : undefined,
       },
-      /* ↓ cloud slot ↓ */
-
-      /* ↑ cloud slot ↑ */
       ollama: {
         enabled: isDesktop ? true : undefined,
         fetchOnClient: isDesktop ? false : !process.env.OLLAMA_PROXY_URL,
@@ -57,13 +74,23 @@ export const getServerGlobalConfig = async () => {
     defaultAgent: {
       config: parseAgentConfig(DEFAULT_AGENT_CONFIG),
     },
+    enableBusinessFeatures: ENABLE_BUSINESS_FEATURES,
+    enableEmailVerification: authEnv.AUTH_EMAIL_VERIFICATION,
+    enableKlavis: !!klavisEnv.KLAVIS_API_KEY,
+    enableLobehubSkill: !!(appEnv.MARKET_TRUSTED_CLIENT_SECRET && appEnv.MARKET_TRUSTED_CLIENT_ID),
+    enableMagicLink: authEnv.AUTH_ENABLE_MAGIC_LINK,
+    enableMarketTrustedClient: !!(
+      appEnv.MARKET_TRUSTED_CLIENT_SECRET && appEnv.MARKET_TRUSTED_CLIENT_ID
+    ),
     enableUploadFileToServer: !!fileEnv.S3_SECRET_ACCESS_KEY,
-    enabledAccessCode: ACCESS_CODES?.length > 0,
 
     image: cleanObject({
       defaultImageNum: imageEnv.AI_IMAGE_DEFAULT_IMAGE_NUM,
     }),
-    oAuthSSOProviders: authEnv.NEXT_AUTH_SSO_PROVIDERS.trim().split(/[,，]/),
+    memory: {
+      userMemory: cleanObject(getPublicMemoryExtractionConfig()),
+    },
+    oAuthSSOProviders: getBetterAuthSSOProviders(),
     systemAgent: parseSystemAgent(appEnv.SYSTEM_AGENT),
     telemetry: {
       langfuse: langfuseEnv.ENABLE_LANGFUSE,

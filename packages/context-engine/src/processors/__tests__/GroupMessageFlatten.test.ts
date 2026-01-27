@@ -18,7 +18,7 @@ describe('GroupMessageFlattenProcessor', () => {
       const input: any[] = [
         {
           id: 'msg-group-1',
-          role: 'group',
+          role: 'assistantGroup',
           content: '',
           createdAt: '2025-10-27T10:00:00.000Z',
           updatedAt: '2025-10-27T10:00:10.000Z',
@@ -98,7 +98,7 @@ describe('GroupMessageFlattenProcessor', () => {
       const input: any[] = [
         {
           id: 'msg-group-1',
-          role: 'group',
+          role: 'assistantGroup',
           content: '',
           children: [
             {
@@ -168,7 +168,7 @@ describe('GroupMessageFlattenProcessor', () => {
       const input: any[] = [
         {
           id: 'msg-group-1',
-          role: 'group',
+          role: 'assistantGroup',
           content: '',
           children: [
             {
@@ -207,7 +207,7 @@ describe('GroupMessageFlattenProcessor', () => {
       const input: any[] = [
         {
           id: 'msg-group-1',
-          role: 'group',
+          role: 'assistantGroup',
           content: '',
           children: [
             {
@@ -255,7 +255,7 @@ describe('GroupMessageFlattenProcessor', () => {
         },
         {
           id: 'msg-group-1',
-          role: 'group',
+          role: 'assistantGroup',
           content: '',
           children: [
             {
@@ -307,7 +307,7 @@ describe('GroupMessageFlattenProcessor', () => {
       const input: any[] = [
         {
           id: 'msg-group-1',
-          role: 'group',
+          role: 'assistantGroup',
           content: '',
           children: [],
         },
@@ -326,7 +326,7 @@ describe('GroupMessageFlattenProcessor', () => {
       const input: any[] = [
         {
           id: 'msg-group-1',
-          role: 'group',
+          role: 'assistantGroup',
           content: '',
           // No children field
         },
@@ -346,7 +346,7 @@ describe('GroupMessageFlattenProcessor', () => {
       const input: any[] = [
         {
           id: 'msg-group-1',
-          role: 'group',
+          role: 'assistantGroup',
           content: '',
           children: [
             {
@@ -378,7 +378,7 @@ describe('GroupMessageFlattenProcessor', () => {
       const input: any[] = [
         {
           id: 'msg-group-1',
-          role: 'group',
+          role: 'assistantGroup',
           content: '',
           children: [
             {
@@ -410,7 +410,7 @@ describe('GroupMessageFlattenProcessor', () => {
       const input: any[] = [
         {
           id: 'msg-group-1',
-          role: 'group',
+          role: 'assistantGroup',
           content: '',
           children: [
             {
@@ -442,7 +442,7 @@ describe('GroupMessageFlattenProcessor', () => {
       const input: any[] = [
         {
           id: 'msg-group-1',
-          role: 'group',
+          role: 'assistantGroup',
           content: '',
           parentId: 'parent-1',
           threadId: 'thread-1',
@@ -489,6 +489,109 @@ describe('GroupMessageFlattenProcessor', () => {
     });
   });
 
+  describe('Supervisor Messages', () => {
+    it('should flatten supervisor message with children', async () => {
+      const processor = new GroupMessageFlattenProcessor();
+
+      const input: any[] = [
+        {
+          id: 'msg-supervisor-1',
+          role: 'supervisor',
+          content: '',
+          createdAt: '2025-10-27T10:00:00.000Z',
+          updatedAt: '2025-10-27T10:00:10.000Z',
+          meta: { title: 'Supervisor Agent' },
+          children: [
+            {
+              id: 'msg-1',
+              content: 'Let me coordinate the agents',
+              tools: [
+                {
+                  id: 'tool-1',
+                  type: 'builtin',
+                  apiName: 'broadcast',
+                  arguments: '{"message":"Hello agents"}',
+                  identifier: 'lobe-group-management',
+                  result: {
+                    id: 'msg-tool-1',
+                    content: 'Broadcast sent',
+                    error: null,
+                    state: {},
+                  },
+                },
+              ],
+              usage: { totalTokens: 100 },
+            },
+          ],
+        },
+      ];
+
+      const context = createContext(input);
+      const result = await processor.process(context);
+
+      // Should create 2 messages: 1 assistant + 1 tool
+      expect(result.messages).toHaveLength(2);
+
+      // Check assistant message (supervisor gets flattened to assistant)
+      const assistantMsg = result.messages[0];
+      expect(assistantMsg.role).toBe('assistant');
+      expect(assistantMsg.id).toBe('msg-1');
+      expect(assistantMsg.content).toBe('Let me coordinate the agents');
+      expect(assistantMsg.tools).toHaveLength(1);
+
+      // Check tool message
+      const toolMsg = result.messages[1];
+      expect(toolMsg.role).toBe('tool');
+      expect(toolMsg.id).toBe('msg-tool-1');
+      expect(toolMsg.content).toBe('Broadcast sent');
+    });
+
+    it('should flatten supervisor message with content only (no tools)', async () => {
+      const processor = new GroupMessageFlattenProcessor();
+
+      const input: any[] = [
+        {
+          id: 'msg-supervisor-1',
+          role: 'supervisor',
+          content: '',
+          children: [
+            {
+              id: 'msg-1',
+              content: 'Anthropic cowork',
+            },
+          ],
+        },
+      ];
+
+      const context = createContext(input);
+      const result = await processor.process(context);
+
+      // Should create 1 assistant message
+      expect(result.messages).toHaveLength(1);
+      expect(result.messages[0].role).toBe('assistant');
+      expect(result.messages[0].content).toBe('Anthropic cowork');
+    });
+
+    it('should handle supervisor message with empty children', async () => {
+      const processor = new GroupMessageFlattenProcessor();
+
+      const input: any[] = [
+        {
+          id: 'msg-supervisor-1',
+          role: 'supervisor',
+          content: '',
+          children: [],
+        },
+      ];
+
+      const context = createContext(input);
+      const result = await processor.process(context);
+
+      // Empty children means no messages created
+      expect(result.messages).toHaveLength(0);
+    });
+  });
+
   describe('Real-world Test Case', () => {
     it('should flatten the provided real-world group message', async () => {
       const processor = new GroupMessageFlattenProcessor();
@@ -497,7 +600,7 @@ describe('GroupMessageFlattenProcessor', () => {
       const input: any[] = [
         {
           id: 'msg_LnIlOyMUnX1ylf',
-          role: 'group',
+          role: 'assistantGroup',
           content: '',
           createdAt: '2025-10-27T10:47:59.475Z',
           updatedAt: '2025-10-27T10:48:10.768Z',

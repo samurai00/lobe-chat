@@ -1,9 +1,10 @@
+import { DEFAULT_SETTINGS } from '@lobechat/config';
+import { DEFAULT_AGENT } from '@lobechat/const';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { PartialDeep } from 'type-fest';
 import { describe, expect, it, vi } from 'vitest';
 import { withSWR } from '~test-utils';
 
-import { DEFAULT_AGENT, DEFAULT_SETTINGS } from '@/const/settings';
 import { userService } from '@/services/user';
 import { useUserStore } from '@/store/user';
 import { LobeAgentSettings } from '@/types/session';
@@ -80,6 +81,31 @@ describe('SettingsAction', () => {
       // Assert that updateUserSettings was called with the correct settings
       expect(userService.updateUserSettings).toHaveBeenCalledWith(
         partialSettings,
+        expect.any(AbortSignal),
+      );
+    });
+
+    it('should include field in diffs when user resets it to default value', async () => {
+      const { result } = renderHook(() => useUserStore());
+
+      // First, set memory.enabled to false (non-default value)
+      await act(async () => {
+        await result.current.setSettings({ memory: { enabled: false } });
+      });
+
+      expect(userService.updateUserSettings).toHaveBeenLastCalledWith(
+        expect.objectContaining({ memory: { enabled: false } }),
+        expect.any(AbortSignal),
+      );
+
+      // Then, reset memory.enabled back to true (default value)
+      // This should still include memory in the diffs to override the previously saved value
+      await act(async () => {
+        await result.current.setSettings({ memory: { enabled: true } });
+      });
+
+      expect(userService.updateUserSettings).toHaveBeenLastCalledWith(
+        expect.objectContaining({ memory: { enabled: true } }),
         expect.any(AbortSignal),
       );
     });

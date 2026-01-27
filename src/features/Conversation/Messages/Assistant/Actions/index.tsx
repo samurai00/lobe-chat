@@ -1,202 +1,216 @@
-import { UIChatMessage } from '@lobechat/types';
-import { ActionIconGroup, type ActionIconGroupEvent, ActionIconGroupItemType } from '@lobehub/ui';
-import { App } from 'antd';
-import { useSearchParams } from 'next/navigation';
-import { memo, use, useCallback, useContext, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { type UIChatMessage } from '@lobechat/types';
+import { ActionIconGroup, createRawModal } from '@lobehub/ui';
+import type { ActionIconGroupEvent, ActionIconGroupItemType } from '@lobehub/ui';
+import { memo, useCallback, useMemo } from 'react';
 
-import ShareMessageModal from '@/features/Conversation/components/ShareMessageModal';
-import { VirtuosoContext } from '@/features/Conversation/components/VirtualizedList/VirtuosoContext';
-import { useChatStore } from '@/store/chat';
-import { threadSelectors } from '@/store/chat/selectors';
-import { useSessionStore } from '@/store/session';
-import { sessionSelectors } from '@/store/session/selectors';
-
-import { InPortalThreadContext } from '../../../context/InPortalThreadContext';
-import { useChatListActionsBar } from '../../../hooks/useChatListActionsBar';
+import ShareMessageModal, { type ShareModalProps } from '../../../components/ShareMessageModal';
+import {
+  Provider,
+  createStore,
+  messageStateSelectors,
+  useConversationStore,
+  useConversationStoreApi,
+} from '../../../store';
+import type {
+  MessageActionItem,
+  MessageActionItemOrDivider,
+  MessageActionsConfig,
+} from '../../../types';
 import { ErrorActionsBar } from './Error';
+import { useAssistantActions } from './useAssistantActions';
 
-interface AssistantActionsProps {
+// Helper to strip handleClick from action items before passing to ActionIconGroup
+const stripHandleClick = (item: MessageActionItemOrDivider): ActionIconGroupItemType => {
+  if ('type' in item && item.type === 'divider') return item as unknown as ActionIconGroupItemType;
+  const { children, ...rest } = item as MessageActionItem;
+  const baseItem = { ...rest } as MessageActionItem;
+  delete (baseItem as { handleClick?: unknown }).handleClick;
+  if (children) {
+    return {
+      ...baseItem,
+      children: children.map((child) => {
+        const nextChild = { ...child } as MessageActionItem;
+        delete (nextChild as { handleClick?: unknown }).handleClick;
+        return nextChild;
+      }),
+    } as ActionIconGroupItemType;
+  }
+  return baseItem as ActionIconGroupItemType;
+};
+
+// Build action items map for handleAction lookup
+const buildActionsMap = (items: MessageActionItemOrDivider[]): Map<string, MessageActionItem> => {
+  const map = new Map<string, MessageActionItem>();
+  for (const item of items) {
+    if ('key' in item && item.key) {
+      map.set(String(item.key), item as MessageActionItem);
+      // Also index children for submenu items
+      if ('children' in item && item.children) {
+        for (const child of item.children) {
+          if (child.key) {
+            map.set(`${item.key}.${child.key}`, child as unknown as MessageActionItem);
+          }
+        }
+      }
+    }
+  }
+  return map;
+};
+
+interface AssistantActionsBarProps {
+  actionsConfig?: MessageActionsConfig;
   data: UIChatMessage;
   id: string;
   index: number;
 }
-export const AssistantActionsBar = memo<AssistantActionsProps>(({ id, data, index }) => {
-  const { error, tools } = data;
-  const [isThreadMode, hasThread] = useChatStore((s) => [
-    !!s.activeThreadId,
-    threadSelectors.hasThreadBySourceMsgId(id)(s),
-  ]);
-  const isGroupSession = useSessionStore(sessionSelectors.isCurrentSessionGroupSession);
-  const [showShareModal, setShareModal] = useState(false);
 
-  const {
-    regenerate,
-    edit,
-    delAndRegenerate,
-    copy,
-    divider,
-    del,
-    branching,
-    // export: exportPDF,
-    share,
-    tts,
-    translate,
-  } = useChatListActionsBar({ hasThread });
+export const AssistantActionsBar = memo<AssistantActionsBarProps>(
+  ({ actionsConfig, id, data, index }) => {
+    const { error, tools } = data;
+    const store = useConversationStoreApi();
 
-  const hasTools = !!tools;
+    const handleOpenShareModal = useCallback(() => {
+      createRawModal(
+        (props: ShareModalProps) => (
+          <Provider
+            createStore={() => {
+              const state = store.getState();
+              return createStore({
+                context: state.context,
+                hooks: state.hooks,
+                skipFetch: state.skipFetch,
+              });
+            }}
+          >
+            <ShareMessageModal {...props} />
+          </Provider>
+        ),
+        {
+          message: data,
+        },
+        { onCloseKey: 'onCancel', openKey: 'open' },
+      );
+    }, [data, store]);
 
-  const inPortalThread = useContext(InPortalThreadContext);
-  const inThread = isThreadMode || inPortalThread;
+    const isCollapsed = useConversationStore(messageStateSelectors.isMessageCollapsed(id));
 
-  const items = useMemo(() => {
-    if (hasTools) return [delAndRegenerate, copy];
+    const defaultActions = useAssistantActions({
+      data,
+      id,
+      index,
+      onOpenShareModal: handleOpenShareModal,
+    });
 
-    return [edit, copy, inThread || isGroupSession ? null : branching].filter(
-      Boolean,
-    ) as ActionIconGroupItemType[];
-  }, [inThread, hasTools, isGroupSession]);
+    const hasTools = !!tools;
 
-  const { t } = useTranslation('common');
-  const searchParams = useSearchParams();
-  const topic = searchParams.get('topic');
-  const [
-    deleteMessage,
-    regenerateMessage,
-    translateMessage,
-    ttsMessage,
-    delAndRegenerateMessage,
-    copyMessage,
-    openThreadCreator,
-    resendThreadMessage,
-    delAndResendThreadMessage,
-    toggleMessageEditing,
-  ] = useChatStore((s) => [
-    s.deleteMessage,
-    s.regenerateMessage,
-    s.translateMessage,
-    s.ttsMessage,
-    s.delAndRegenerateMessage,
-    s.copyMessage,
-    s.openThreadCreator,
-    s.resendThreadMessage,
-    s.delAndResendThreadMessage,
-    s.toggleMessageEditing,
-  ]);
-  const { message } = App.useApp();
-  const virtuosoRef = use(VirtuosoContext);
+    // Get collapse/expand action based on current state
+    const collapseAction = isCollapsed ? defaultActions.expand : defaultActions.collapse;
 
-  const onActionClick = useCallback(
-    async (action: ActionIconGroupEvent) => {
-      switch (action.key) {
-        case 'edit': {
-          toggleMessageEditing(id, true);
+    // Create extra actions from factory functions
+    const extraBarItems = useMemo(() => {
+      if (!actionsConfig?.extraBarActions) return [];
+      return actionsConfig.extraBarActions
+        .map((factory) => factory(id))
+        .filter((item): item is NonNullable<typeof item> => item !== null);
+    }, [actionsConfig?.extraBarActions, id]);
 
-          virtuosoRef?.current?.scrollIntoView({ align: 'start', behavior: 'auto', index });
-        }
-      }
-      if (!data) return;
+    const extraMenuItems = useMemo(() => {
+      if (!actionsConfig?.extraMenuActions) return [];
+      return actionsConfig.extraMenuActions
+        .map((factory) => factory(id))
+        .filter((item): item is NonNullable<typeof item> => item !== null);
+    }, [actionsConfig?.extraMenuActions, id]);
 
-      switch (action.key) {
-        case 'copy': {
-          await copyMessage(id, data.content);
-          message.success(t('copySuccess', { defaultValue: 'Copy Success' }));
-          break;
-        }
-        case 'branching': {
-          if (!topic) {
-            message.warning(t('branchingRequiresSavedTopic'));
-            break;
+    // Use external config if provided, otherwise use defaults
+    // Append extra actions from factories
+    const barItems = useMemo(() => {
+      const base =
+        actionsConfig?.bar ??
+        (hasTools
+          ? [defaultActions.delAndRegenerate, defaultActions.copy]
+          : [defaultActions.edit, defaultActions.copy]);
+      return [...base, ...extraBarItems];
+    }, [
+      actionsConfig?.bar,
+      hasTools,
+      defaultActions.delAndRegenerate,
+      defaultActions.copy,
+      defaultActions.edit,
+      extraBarItems,
+    ]);
+
+    const menuItems = useMemo(() => {
+      const base = actionsConfig?.menu ?? [
+        defaultActions.edit,
+        defaultActions.copy,
+        collapseAction,
+        defaultActions.divider,
+        defaultActions.tts,
+        defaultActions.translate,
+        defaultActions.divider,
+        defaultActions.share,
+        defaultActions.divider,
+        defaultActions.regenerate,
+        defaultActions.delAndRegenerate,
+        defaultActions.del,
+      ];
+      return [...base, ...extraMenuItems];
+    }, [
+      actionsConfig?.menu,
+      defaultActions.edit,
+      defaultActions.copy,
+      collapseAction,
+      defaultActions.divider,
+      defaultActions.tts,
+      defaultActions.translate,
+      defaultActions.share,
+      defaultActions.regenerate,
+      defaultActions.delAndRegenerate,
+      defaultActions.del,
+      extraMenuItems,
+    ]);
+
+    // Strip handleClick for DOM safety
+    const items = useMemo(
+      () =>
+        barItems
+          .filter((item) => item && !('disabled' in item && item.disabled))
+          .map(stripHandleClick),
+      [barItems],
+    );
+    const menu = useMemo(() => menuItems.map(stripHandleClick), [menuItems]);
+
+    // Build actions map for click handling
+    const allActions = useMemo(
+      () => buildActionsMap([...barItems, ...menuItems]),
+      [barItems, menuItems],
+    );
+
+    const handleAction = useCallback(
+      (event: ActionIconGroupEvent) => {
+        // Handle submenu items (e.g., translate -> zh-CN)
+        if (event.keyPath && event.keyPath.length > 1) {
+          const parentKey = event.keyPath.at(-1);
+          const childKey = event.keyPath[0];
+          const parent = allActions.get(parentKey!);
+          if (parent && 'children' in parent && parent.children) {
+            const child = parent.children.find((c) => c.key === childKey);
+            child?.handleClick?.();
+            return;
           }
-          openThreadCreator(id);
-          break;
         }
 
-        case 'del': {
-          deleteMessage(id);
-          break;
-        }
+        // Handle regular actions
+        const action = allActions.get(event.key);
+        action?.handleClick?.();
+      },
+      [allActions],
+    );
 
-        case 'regenerate': {
-          if (inPortalThread) {
-            resendThreadMessage(id);
-          } else regenerateMessage(id);
+    if (error) return <ErrorActionsBar actions={defaultActions} onActionClick={handleAction} />;
 
-          // if this message is an error message, we need to delete it
-          if (data.error) deleteMessage(id);
-          break;
-        }
+    return <ActionIconGroup items={items} menu={menu} onActionClick={handleAction} />;
+  },
+);
 
-        case 'delAndRegenerate': {
-          if (inPortalThread) {
-            delAndResendThreadMessage(id);
-          } else {
-            delAndRegenerateMessage(id);
-          }
-          break;
-        }
-
-        case 'tts': {
-          ttsMessage(id);
-          break;
-        }
-
-        // case 'export': {
-        //   setModal(true);
-        //   break;
-        // }
-
-        case 'share': {
-          setShareModal(true);
-          break;
-        }
-      }
-
-      if (action.keyPath.at(-1) === 'translate') {
-        // click the menu data with translate data, the result is:
-        // key: 'en-US'
-        // keyPath: ['en-US','translate']
-        const lang = action.keyPath[0];
-        translateMessage(id, lang);
-      }
-    },
-    [data, topic],
-  );
-
-  if (error) return <ErrorActionsBar onActionClick={onActionClick} />;
-
-  return (
-    <>
-      <ActionIconGroup
-        items={items}
-        menu={{
-          items: [
-            edit,
-            copy,
-            divider,
-            tts,
-            translate,
-            divider,
-            share,
-            // exportPDF,
-            divider,
-            regenerate,
-            delAndRegenerate,
-            del,
-          ],
-        }}
-        onActionClick={onActionClick}
-      />
-      {/*{showModal && (*/}
-      {/*  <ExportPreview content={data.content} onClose={() => setModal(false)} open={showModal} />*/}
-      {/*)}*/}
-      <ShareMessageModal
-        message={data!}
-        onCancel={() => {
-          setShareModal(false);
-        }}
-        open={showShareModal}
-      />
-    </>
-  );
-});
+AssistantActionsBar.displayName = 'AssistantActionsBar';

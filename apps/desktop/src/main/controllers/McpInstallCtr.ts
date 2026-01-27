@@ -8,23 +8,23 @@ const logger = createLogger('controllers:McpInstallCtr');
 const protocolHandler = createProtocolHandler('plugin');
 
 /**
- * 验证 MCP Schema 对象结构
+ * Validate MCP Schema object structure
  */
 function validateMcpSchema(schema: any): schema is McpSchema {
   if (!schema || typeof schema !== 'object') return false;
 
-  // 必填字段验证
+  // Required field validation
   if (typeof schema.identifier !== 'string' || !schema.identifier) return false;
   if (typeof schema.name !== 'string' || !schema.name) return false;
   if (typeof schema.author !== 'string' || !schema.author) return false;
   if (typeof schema.description !== 'string' || !schema.description) return false;
   if (typeof schema.version !== 'string' || !schema.version) return false;
 
-  // 可选字段验证
+  // Optional field validation
   if (schema.homepage !== undefined && typeof schema.homepage !== 'string') return false;
   if (schema.icon !== undefined && typeof schema.icon !== 'string') return false;
 
-  // config 字段验证
+  // config field validation
   if (!schema.config || typeof schema.config !== 'object') return false;
   const config = schema.config;
 
@@ -35,13 +35,13 @@ function validateMcpSchema(schema: any): schema is McpSchema {
   } else if (config.type === 'http') {
     if (typeof config.url !== 'string' || !config.url) return false;
     try {
-      new URL(config.url); // 验证URL格式
+      new URL(config.url); // Validate URL format
     } catch {
       return false;
     }
     if (config.headers !== undefined && typeof config.headers !== 'object') return false;
   } else {
-    return false; // 未知的 config type
+    return false; // Unknown config type
   }
 
   return true;
@@ -54,8 +54,8 @@ interface McpInstallParams {
 }
 
 /**
- * MCP 插件安装控制器
- * 负责处理 MCP 插件安装流程
+ * MCP plugin installation controller
+ * Responsible for handling MCP plugin installation process
  */
 export default class McpInstallController extends ControllerModule {
   /**
@@ -138,7 +138,7 @@ export default class McpInstallController extends ControllerModule {
 
       // 通过应用实例广播到前端
       if (this.app?.browserManager) {
-        this.app.browserManager.broadcastToWindow('chat', 'mcpInstallRequest', installRequest);
+        this.app.browserManager.broadcastToWindow('app', 'mcpInstallRequest', installRequest);
         logger.debug(`🔧 [McpInstall] Install request broadcasted successfully`);
         return true;
       } else {

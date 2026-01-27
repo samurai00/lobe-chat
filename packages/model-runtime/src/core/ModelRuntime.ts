@@ -13,10 +13,11 @@ import {
   GenerateObjectPayload,
   ModelRequestOptions,
   PullModelParams,
-  TextToImagePayload,
   TextToSpeechPayload,
 } from '../types';
+import { AgentRuntimeErrorType } from '../types/error';
 import { AuthenticatedImageRuntime, CreateImagePayload } from '../types/image';
+import { AgentRuntimeError } from '../utils/createError';
 import { LobeRuntimeAI } from './BaseAI';
 
 export interface AgentChatOptions {
@@ -62,15 +63,19 @@ export class ModelRuntime {
    * ```
    */
   async chat(payload: ChatStreamPayload, options?: ChatMethodOptions) {
-    return this._runtime.chat!(payload, options);
+    if (typeof this._runtime.chat !== 'function') {
+      throw AgentRuntimeError.chat({
+        error: new Error('Chat is not supported by this provider'),
+        errorType: AgentRuntimeErrorType.ProviderBizError,
+        provider: payload.provider || 'unknown',
+      });
+    }
+
+    return this._runtime.chat(payload, options);
   }
 
   async generateObject(payload: GenerateObjectPayload) {
     return this._runtime.generateObject!(payload);
-  }
-
-  async textToImage(payload: TextToImagePayload) {
-    return this._runtime.textToImage?.(payload);
   }
 
   async createImage(payload: CreateImagePayload) {

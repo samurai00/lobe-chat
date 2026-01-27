@@ -20,6 +20,23 @@ import {
   generateToolCallId,
 } from '../protocol';
 
+/**
+ * Extended type for OpenAI tool calls that includes provider-specific extensions
+ * like OpenRouter's thoughtSignature for Gemini models
+ */
+type OpenAIExtendedToolCall = OpenAI.ChatCompletionChunk.Choice.Delta.ToolCall & {
+  thoughtSignature?: string;
+};
+
+/**
+ * Type guard to check if a tool call has thoughtSignature
+ */
+const hasThoughtSignature = (
+  toolCall: OpenAI.ChatCompletionChunk.Choice.Delta.ToolCall,
+): toolCall is OpenAIExtendedToolCall => {
+  return 'thoughtSignature' in toolCall && typeof toolCall.thoughtSignature === 'string';
+};
+
 // Process markdown base64 images: extract URLs and clean text in one pass
 const processMarkdownBase64Images = (text: string): { cleanedText: string; urls: string[] } => {
   if (!text) return { cleanedText: text, urls: [] };
@@ -71,6 +88,55 @@ const transformOpenAIStream = (
     return { data: errorData, id: 'first_chunk_error', type: 'error' };
   }
 
+  // MiniMax returns business errors (e.g., insufficient balance) in base_resp, but not through FIRST_CHUNK_ERROR_KEY
+  // Typical response: { id: '...', choices: null, base_resp: { status_code: 1008, status_msg: 'insufficient balance' }, usage: {...} }
+  if ((chunk as any).base_resp && typeof (chunk as any).base_resp.status_code === 'number') {
+    const baseResp = (chunk as any).base_resp as {
+      message?: string;
+      status_code: number;
+      status_msg?: string;
+    };
+
+    if (baseResp.status_code !== 0) {
+      // Map MiniMax error codes to corresponding error types
+      let errorType: ILobeAgentRuntimeErrorType = AgentRuntimeErrorType.ProviderBizError;
+
+      switch (baseResp.status_code) {
+        // 1004 - Unauthorized / Token mismatch / 2049 - Invalid API Key
+        case 1004:
+        case 2049: {
+          errorType = AgentRuntimeErrorType.InvalidProviderAPIKey;
+          break;
+        }
+        // 1008 - Insufficient balance
+        case 1008: {
+          errorType = AgentRuntimeErrorType.InsufficientQuota;
+          break;
+        }
+        // 1002 - Request rate limit exceeded / 1041 - Connection limit / 2045 - Request rate growth limit exceeded
+        case 1002:
+        case 1041:
+        case 2045: {
+          errorType = AgentRuntimeErrorType.QuotaLimitReached;
+          break;
+        }
+        // 1039 - Token limit
+        case 1039: {
+          errorType = AgentRuntimeErrorType.ExceededContextWindow;
+          break;
+        }
+      }
+
+      const errorData: ChatMessageError = {
+        body: { ...baseResp, provider: 'minimax' },
+        message: baseResp.status_msg || baseResp.message || 'MiniMax provider error',
+        type: errorType,
+      };
+
+      return { data: errorData, id: chunk.id, type: 'error' };
+    }
+  }
+
   try {
     // maybe need another structure to add support for multiple choices
     if (!Array.isArray(chunk.choices) || chunk.choices.length === 0) {
@@ -91,25 +157,49 @@ const transformOpenAIStream = (
       );
 
       if (tool_calls.length > 0) {
+        // Validate tool calls - function must exist for valid tool calls
+        // This ensures proper error handling for malformed chunks
+        const hasInvalidToolCall = item.delta.tool_calls.some((tc) => tc.function === null);
+        if (hasInvalidToolCall) {
+          throw new Error('Invalid tool call: function is null');
+        }
+
         return {
-          data: item.delta.tool_calls.map((value, index): StreamToolCallChunkData => {
-            if (streamContext && !streamContext.tool) {
-              streamContext.tool = {
-                id: value.id!,
-                index: value.index,
-                name: value.function!.name!,
+          data: item.delta.tool_calls.map((value, mapIndex): StreamToolCallChunkData => {
+            // Determine the actual tool index
+            const toolIndex = typeof value.index !== 'undefined' ? value.index : mapIndex;
+
+            // Store tool info by index for parallel tool calls (e.g., GPT-5.2)
+            // When a chunk has id and name, it's the start of a new tool call
+            if (streamContext && value.id && value.function?.name) {
+              if (!streamContext.tools) streamContext.tools = {};
+              streamContext.tools[toolIndex] = {
+                id: value.id,
+                index: toolIndex,
+                name: value.function.name,
               };
             }
 
-            return {
+            // Also maintain backward compatibility with single tool context
+            if (streamContext && !streamContext.tool && value.id) {
+              streamContext.tool = {
+                id: value.id!,
+                index: toolIndex,
+                name: value.function?.name ?? '',
+              };
+            }
+
+            const baseData: StreamToolCallChunkData = {
               function: {
                 arguments: value.function?.arguments ?? '',
                 name: value.function?.name ?? null,
               },
+              // Priority: explicit id > tools map by index > single tool fallback > generated id
               id:
                 value.id ||
+                streamContext?.tools?.[toolIndex]?.id ||
                 streamContext?.tool?.id ||
-                generateToolCallId(index, value.function?.name),
+                generateToolCallId(mapIndex, value.function?.name),
 
               // mistral's tool calling don't have index and function field, it's data like:
               // [{"id":"xbhnmTtY7","function":{"name":"lobe-image-designer____text2image____builtin","arguments":"{\"prompts\": [\"A photo of a small, fluffy dog with a playful expression and wagging tail.\", \"A watercolor painting of a small, energetic dog with a glossy coat and bright eyes.\", \"A vector illustration of a small, adorable dog with a short snout and perky ears.\", \"A drawing of a small, scruffy dog with a mischievous grin and a wagging tail.\"], \"quality\": \"standard\", \"seeds\": [123456, 654321, 111222, 333444], \"size\": \"1024x1024\", \"style\": \"vivid\"}"}}]
@@ -118,9 +208,17 @@ const transformOpenAIStream = (
               // [{"id":"call_function_4752059746","type":"function","function":{"name":"lobe-image-designer____text2image____builtin","arguments":"{\"prompts\": [\"一个流浪的地球，背景是浩瀚"}}]
 
               // so we need to add these default values
-              index: typeof value.index !== 'undefined' ? value.index : index,
+              index: toolIndex,
               type: value.type || 'function',
             };
+
+            // OpenRouter returns thoughtSignature in tool_calls for Gemini models (e.g. gemini-3-flash-preview)
+            // [{"id":"call_123","type":"function","function":{"name":"get_weather","arguments":"{}"},"thoughtSignature":"abc123"}]
+            if (hasThoughtSignature(value)) {
+              baseData.thoughtSignature = value.thoughtSignature;
+            }
+
+            return baseData;
           }),
           id: chunk.id,
           type: 'tool_calls',
@@ -265,6 +363,24 @@ const transformOpenAIStream = (
       let reasoning_content = (() => {
         if ('reasoning_content' in item.delta) return item.delta.reasoning_content;
         if ('reasoning' in item.delta) return item.delta.reasoning;
+        // Handle MiniMax M2 reasoning_details format (array of objects with text field)
+        if ('reasoning_details' in item.delta) {
+          const details = item.delta.reasoning_details;
+          if (Array.isArray(details)) {
+            return details
+              .filter((detail: any) => detail.text)
+              .map((detail: any) => detail.text)
+              .join('');
+          }
+          if (typeof details === 'string') {
+            return details;
+          }
+          if (typeof details === 'object' && details !== null && 'text' in details) {
+            return details.text;
+          }
+          // Fallback for unexpected types
+          return '';
+        }
         // Handle content array format with thinking blocks (e.g. mistral AI Magistral model)
         if ('content' in item.delta && Array.isArray(item.delta.content)) {
           return item.delta.content

@@ -12,13 +12,19 @@ const combineKeys = (keys: string[]) => keys.join('+');
 
 export type HotkeyRegistration = HotkeyItem[];
 
-// mod 在 Mac 上是 command 键，alt 在 Win 上是 ctrl 键
+// mod is the command key on Mac, alt is the ctrl key on Windows
 export const HOTKEYS_REGISTRATION: HotkeyRegistration = [
   // basic
   {
     group: HotkeyGroupEnum.Essential,
-    id: HotkeyEnum.Search,
+    id: HotkeyEnum.CommandPalette,
     keys: combineKeys([KeyEnum.Mod, 'k']),
+    scopes: [HotkeyScopeEnum.Global],
+  },
+  {
+    group: HotkeyGroupEnum.Essential,
+    id: HotkeyEnum.Search,
+    keys: combineKeys([KeyEnum.Mod, 'j']),
     scopes: [HotkeyScopeEnum.Global],
   },
   {
@@ -36,21 +42,15 @@ export const HOTKEYS_REGISTRATION: HotkeyRegistration = [
   },
   {
     group: HotkeyGroupEnum.Essential,
-    id: HotkeyEnum.ToggleZenMode,
-    keys: combineKeys([KeyEnum.Mod, KeyEnum.Backslash]),
-    scopes: [HotkeyScopeEnum.Chat],
-  },
-  {
-    group: HotkeyGroupEnum.Essential,
     id: HotkeyEnum.ToggleLeftPanel,
     keys: combineKeys([KeyEnum.Mod, KeyEnum.BracketLeft]),
-    scopes: [HotkeyScopeEnum.Chat, HotkeyScopeEnum.Files, HotkeyScopeEnum.Image],
+    scopes: [HotkeyScopeEnum.Global],
   },
   {
     group: HotkeyGroupEnum.Essential,
     id: HotkeyEnum.ToggleRightPanel,
     keys: combineKeys([KeyEnum.Mod, KeyEnum.BracketRight]),
-    scopes: [HotkeyScopeEnum.Chat, HotkeyScopeEnum.Image],
+    scopes: [HotkeyScopeEnum.Global],
   },
   {
     group: HotkeyGroupEnum.Essential,
@@ -59,6 +59,12 @@ export const HOTKEYS_REGISTRATION: HotkeyRegistration = [
     scopes: [HotkeyScopeEnum.Global],
   },
   // Chat
+  {
+    group: HotkeyGroupEnum.Essential,
+    id: HotkeyEnum.ToggleZenMode,
+    keys: combineKeys([KeyEnum.Mod, KeyEnum.Backslash]),
+    scopes: [HotkeyScopeEnum.Chat],
+  },
   {
     group: HotkeyGroupEnum.Conversation,
     id: HotkeyEnum.OpenChatSettings,
@@ -93,7 +99,7 @@ export const HOTKEYS_REGISTRATION: HotkeyRegistration = [
     group: HotkeyGroupEnum.Conversation,
     id: HotkeyEnum.AddUserMessage,
     keys: combineKeys([KeyEnum.Alt, KeyEnum.Enter]),
-    // 不通过 Scope 模式激活
+    scopes: [HotkeyScopeEnum.Chat],
   },
   {
     group: HotkeyGroupEnum.Conversation,
@@ -108,11 +114,17 @@ export const HOTKEYS_REGISTRATION: HotkeyRegistration = [
     keys: combineKeys([KeyEnum.Alt, KeyEnum.Shift, KeyEnum.Backspace]),
     scopes: [HotkeyScopeEnum.Chat],
   },
+  {
+    group: HotkeyGroupEnum.Essential,
+    id: HotkeyEnum.SaveDocument,
+    keys: combineKeys([KeyEnum.Mod, 's']),
+    scopes: [HotkeyScopeEnum.Files],
+  },
 ];
 
 type DesktopHotkeyRegistration = DesktopHotkeyItem[];
 
-// 桌面端快捷键配置
+// Desktop hotkey configuration
 export const DESKTOP_HOTKEYS_REGISTRATION: DesktopHotkeyRegistration = [
   {
     id: DesktopHotkeyEnum.ShowApp,

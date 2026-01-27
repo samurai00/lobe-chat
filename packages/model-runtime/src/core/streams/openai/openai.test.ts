@@ -1048,6 +1048,328 @@ describe('OpenAIStream', () => {
         ].map((i) => `${i}\n`),
       );
     });
+
+    it('should handle OpenRouter tool calls with thoughtSignature (for Gemini models)', async () => {
+      // OpenRouter returns thoughtSignature in tool_calls for Gemini models
+      // This is required for preserving reasoning blocks across turns
+      // Ref: https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
+      const mockOpenAIStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue({
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      function: { name: 'github__get_me', arguments: '{}' },
+                      id: 'call_123',
+                      index: 0,
+                      type: 'function',
+                      // OpenRouter adds thoughtSignature for Gemini 3 models
+                      thoughtSignature: 'ErEDCq4DAdHtim...',
+                    },
+                  ],
+                },
+                index: 0,
+              },
+            ],
+            id: 'or-123',
+          });
+
+          controller.close();
+        },
+      });
+
+      const onToolCallMock = vi.fn();
+
+      const protocolStream = OpenAIStream(mockOpenAIStream, {
+        callbacks: {
+          onToolsCalling: onToolCallMock,
+        },
+      });
+
+      const decoder = new TextDecoder();
+      const chunks = [];
+
+      // @ts-ignore
+      for await (const chunk of protocolStream) {
+        chunks.push(decoder.decode(chunk, { stream: true }));
+      }
+
+      expect(chunks).toEqual([
+        'id: or-123\n',
+        'event: tool_calls\n',
+        // thoughtSignature should be preserved in the output
+        `data: [{"function":{"arguments":"{}","name":"github__get_me"},"id":"call_123","index":0,"type":"function","thoughtSignature":"ErEDCq4DAdHtim..."}]\n\n`,
+      ]);
+
+      // Verify the callback receives thoughtSignature
+      expect(onToolCallMock).toHaveBeenCalledWith({
+        chunk: [
+          {
+            function: { arguments: '{}', name: 'github__get_me' },
+            id: 'call_123',
+            index: 0,
+            thoughtSignature: 'ErEDCq4DAdHtim...',
+            type: 'function',
+          },
+        ],
+        toolsCalling: [
+          {
+            function: { arguments: '{}', name: 'github__get_me' },
+            id: 'call_123',
+            thoughtSignature: 'ErEDCq4DAdHtim...',
+            type: 'function',
+          },
+        ],
+      });
+    });
+
+    it('should NOT include thoughtSignature in output when not present in tool call', async () => {
+      // Standard tool calls without thoughtSignature should not include the field
+      const mockOpenAIStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue({
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      function: { name: 'search', arguments: '{"query":"test"}' },
+                      id: 'call_456',
+                      index: 0,
+                      type: 'function',
+                      // No thoughtSignature field
+                    },
+                  ],
+                },
+                index: 0,
+              },
+            ],
+            id: 'standard-123',
+          });
+
+          controller.close();
+        },
+      });
+
+      const onToolCallMock = vi.fn();
+
+      const protocolStream = OpenAIStream(mockOpenAIStream, {
+        callbacks: {
+          onToolsCalling: onToolCallMock,
+        },
+      });
+
+      const decoder = new TextDecoder();
+      const chunks = [];
+
+      // @ts-ignore
+      for await (const chunk of protocolStream) {
+        chunks.push(decoder.decode(chunk, { stream: true }));
+      }
+
+      expect(chunks).toEqual([
+        'id: standard-123\n',
+        'event: tool_calls\n',
+        // thoughtSignature should NOT be in the output
+        `data: [{"function":{"arguments":"{\\"query\\":\\"test\\"}","name":"search"},"id":"call_456","index":0,"type":"function"}]\n\n`,
+      ]);
+
+      // Verify the callback does NOT receive thoughtSignature
+      expect(onToolCallMock).toHaveBeenCalledWith({
+        chunk: [
+          {
+            function: { arguments: '{"query":"test"}', name: 'search' },
+            id: 'call_456',
+            index: 0,
+            // thoughtSignature should not be present
+            type: 'function',
+          },
+        ],
+        toolsCalling: [
+          {
+            function: { arguments: '{"query":"test"}', name: 'search' },
+            id: 'call_456',
+            // thoughtSignature should not be present
+            type: 'function',
+          },
+        ],
+      });
+
+      // Verify thoughtSignature is not in the chunk
+      expect(onToolCallMock.mock.calls[0][0].chunk[0]).not.toHaveProperty('thoughtSignature');
+      expect(onToolCallMock.mock.calls[0][0].toolsCalling[0]).not.toHaveProperty(
+        'thoughtSignature',
+      );
+    });
+
+    it('should handle GPT-5.2 parallel tool calls with correct id mapping', async () => {
+      // GPT-5.2 returns multiple tool calls in parallel with different indices
+      // Each tool call starts with id+name, followed by arguments-only chunks
+      // The key issue is that subsequent chunks without id should use the correct id
+      // based on their index, not the first tool's id
+      const streamData = [
+        // Tool 0: first chunk with id
+        {
+          id: 'chatcmpl-test',
+          choices: [
+            {
+              index: 0,
+              delta: {
+                tool_calls: [
+                  {
+                    id: 'call_tool0',
+                    type: 'function',
+                    function: { name: 'search', arguments: '' },
+                    index: 0,
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        // Tool 0: arguments chunk
+        {
+          id: 'chatcmpl-test',
+          choices: [
+            {
+              index: 0,
+              delta: {
+                tool_calls: [{ function: { arguments: '{"query":' }, index: 0 }],
+              },
+            },
+          ],
+        },
+        // Tool 1: first chunk with id (parallel tool call starts)
+        {
+          id: 'chatcmpl-test',
+          choices: [
+            {
+              index: 0,
+              delta: {
+                tool_calls: [
+                  {
+                    id: 'call_tool1',
+                    type: 'function',
+                    function: { name: 'search', arguments: '' },
+                    index: 1,
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        // Tool 0: more arguments (continuing tool 0)
+        {
+          id: 'chatcmpl-test',
+          choices: [
+            {
+              index: 0,
+              delta: {
+                tool_calls: [{ function: { arguments: ' "test0"}' }, index: 0 }],
+              },
+            },
+          ],
+        },
+        // Tool 1: arguments chunk
+        {
+          id: 'chatcmpl-test',
+          choices: [
+            {
+              index: 0,
+              delta: {
+                tool_calls: [{ function: { arguments: '{"query": "test1"}' }, index: 1 }],
+              },
+            },
+          ],
+        },
+        // Tool 2: first chunk with id
+        {
+          id: 'chatcmpl-test',
+          choices: [
+            {
+              index: 0,
+              delta: {
+                tool_calls: [
+                  {
+                    id: 'call_tool2',
+                    type: 'function',
+                    function: { name: 'search', arguments: '' },
+                    index: 2,
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        // Tool 2: arguments chunk
+        {
+          id: 'chatcmpl-test',
+          choices: [
+            {
+              index: 0,
+              delta: {
+                tool_calls: [{ function: { arguments: '{"query": "test2"}' }, index: 2 }],
+              },
+            },
+          ],
+        },
+        // Finish
+        {
+          id: 'chatcmpl-test',
+          choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
+        },
+      ];
+
+      const mockOpenAIStream = new ReadableStream({
+        start(controller) {
+          streamData.forEach((data) => {
+            controller.enqueue(data);
+          });
+          controller.close();
+        },
+      });
+
+      const protocolStream = OpenAIStream(mockOpenAIStream);
+      const decoder = new TextDecoder();
+      const chunks: string[] = [];
+
+      // @ts-ignore
+      for await (const chunk of protocolStream) {
+        chunks.push(decoder.decode(chunk, { stream: true }));
+      }
+
+      // Verify the exact output - each tool call chunk should have the correct id based on index
+      expect(chunks).toEqual(
+        [
+          'id: chatcmpl-test',
+          'event: tool_calls',
+          `data: [{"function":{"arguments":"","name":"search"},"id":"call_tool0","index":0,"type":"function"}]\n`,
+          'id: chatcmpl-test',
+          'event: tool_calls',
+          `data: [{"function":{"arguments":"{\\"query\\":","name":null},"id":"call_tool0","index":0,"type":"function"}]\n`,
+          'id: chatcmpl-test',
+          'event: tool_calls',
+          `data: [{"function":{"arguments":"","name":"search"},"id":"call_tool1","index":1,"type":"function"}]\n`,
+          'id: chatcmpl-test',
+          'event: tool_calls',
+          `data: [{"function":{"arguments":" \\"test0\\"}","name":null},"id":"call_tool0","index":0,"type":"function"}]\n`,
+          'id: chatcmpl-test',
+          'event: tool_calls',
+          `data: [{"function":{"arguments":"{\\"query\\": \\"test1\\"}","name":null},"id":"call_tool1","index":1,"type":"function"}]\n`,
+          'id: chatcmpl-test',
+          'event: tool_calls',
+          `data: [{"function":{"arguments":"","name":"search"},"id":"call_tool2","index":2,"type":"function"}]\n`,
+          'id: chatcmpl-test',
+          'event: tool_calls',
+          `data: [{"function":{"arguments":"{\\"query\\": \\"test2\\"}","name":null},"id":"call_tool2","index":2,"type":"function"}]\n`,
+          'id: chatcmpl-test',
+          'event: stop',
+          `data: "tool_calls"\n`,
+        ].map((i) => `${i}\n`),
+      );
+    });
   });
 
   describe('Reasoning', () => {
@@ -2317,6 +2639,155 @@ describe('OpenAIStream', () => {
       );
     });
 
+    it('should handle reasoning_details array format from MiniMax M2', async () => {
+      const data = [
+        {
+          id: '055ccc4cbe1ca0dc18037256237d0823',
+          object: 'chat.completion.chunk',
+          created: 1762498892,
+          model: 'MiniMax-M2',
+          choices: [
+            {
+              index: 0,
+              delta: {
+                content: '',
+                role: 'assistant',
+                name: 'MiniMax AI',
+                audio_content: '',
+                reasoning_details: [
+                  {
+                    type: 'reasoning.text',
+                    id: 'reasoning-text-1',
+                    format: 'MiniMax-response-v1',
+                    index: 0,
+                    text: '中文打招呼说"你好"，',
+                  },
+                ],
+              },
+              finish_reason: null,
+            },
+          ],
+          usage: null,
+        },
+        {
+          id: '055ccc4cbe1ca0dc18037256237d0823',
+          object: 'chat.completion.chunk',
+          created: 1762498892,
+          model: 'MiniMax-M2',
+          choices: [
+            {
+              index: 0,
+              delta: {
+                reasoning_details: [
+                  {
+                    type: 'reasoning.text',
+                    id: 'reasoning-text-2',
+                    format: 'MiniMax-response-v1',
+                    index: 0,
+                    text: '我需要用中文回复。',
+                  },
+                ],
+              },
+              finish_reason: null,
+            },
+          ],
+          usage: null,
+        },
+        {
+          id: '055ccc4cbe1ca0dc18037256237d0823',
+          object: 'chat.completion.chunk',
+          created: 1762498892,
+          model: 'MiniMax-M2',
+          choices: [
+            {
+              index: 0,
+              delta: {
+                content: '你好',
+              },
+              finish_reason: null,
+            },
+          ],
+          usage: null,
+        },
+        {
+          id: '055ccc4cbe1ca0dc18037256237d0823',
+          object: 'chat.completion.chunk',
+          created: 1762498892,
+          model: 'MiniMax-M2',
+          choices: [
+            {
+              index: 0,
+              delta: {
+                content: '！',
+              },
+              finish_reason: null,
+            },
+          ],
+          usage: null,
+        },
+        {
+          id: '055ccc4cbe1ca0dc18037256237d0823',
+          object: 'chat.completion.chunk',
+          created: 1762498892,
+          model: 'MiniMax-M2',
+          choices: [
+            {
+              index: 0,
+              delta: {
+                content: '',
+              },
+              finish_reason: 'stop',
+            },
+          ],
+          usage: {
+            prompt_tokens: 10,
+            completion_tokens: 20,
+            total_tokens: 30,
+          },
+        },
+      ];
+
+      const mockOpenAIStream = new ReadableStream({
+        start(controller) {
+          data.forEach((chunk) => {
+            controller.enqueue(chunk);
+          });
+
+          controller.close();
+        },
+      });
+
+      const protocolStream = OpenAIStream(mockOpenAIStream);
+
+      const decoder = new TextDecoder();
+      const chunks = [];
+
+      // @ts-ignore
+      for await (const chunk of protocolStream) {
+        chunks.push(decoder.decode(chunk, { stream: true }));
+      }
+
+      expect(chunks).toEqual(
+        [
+          'id: 055ccc4cbe1ca0dc18037256237d0823',
+          'event: reasoning',
+          `data: "中文打招呼说\\"你好\\"，"\n`,
+          'id: 055ccc4cbe1ca0dc18037256237d0823',
+          'event: reasoning',
+          `data: "我需要用中文回复。"\n`,
+          'id: 055ccc4cbe1ca0dc18037256237d0823',
+          'event: text',
+          `data: "你好"\n`,
+          'id: 055ccc4cbe1ca0dc18037256237d0823',
+          'event: text',
+          `data: "！"\n`,
+          'id: 055ccc4cbe1ca0dc18037256237d0823',
+          'event: usage',
+          `data: {"inputTextTokens":10,"outputTextTokens":20,"totalInputTokens":10,"totalOutputTokens":20,"totalTokens":30}\n`,
+        ].map((i) => `${i}\n`),
+      );
+    });
+
     it('should handle claude reasoning in litellm openai mode', async () => {
       const data = [
         {
@@ -3345,6 +3816,167 @@ describe('OpenAIStream', () => {
       expect(chunks[2]).toContain(
         'chat response streaming chunk parse error, please contact your API Provider to fix it.',
       );
+    });
+
+    it('should handle MiniMax base_resp error with insufficient quota (1008)', async () => {
+      const mockOpenAIStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue({
+            id: 'minimax-error-1008',
+            choices: null,
+            base_resp: {
+              status_code: 1008,
+              status_msg: 'insufficient balance',
+            },
+          });
+
+          controller.close();
+        },
+      });
+
+      const protocolStream = OpenAIStream(mockOpenAIStream);
+
+      const decoder = new TextDecoder();
+      const chunks = [];
+
+      // @ts-ignore
+      for await (const chunk of protocolStream) {
+        chunks.push(decoder.decode(chunk, { stream: true }));
+      }
+
+      expect(chunks[0]).toBe('id: minimax-error-1008\n');
+      expect(chunks[1]).toBe('event: error\n');
+      expect(chunks[2]).toContain('InsufficientQuota');
+      expect(chunks[2]).toContain('insufficient balance');
+      expect(chunks[2]).toContain('minimax');
+    });
+
+    it('should handle MiniMax base_resp error with invalid API key (2049)', async () => {
+      const mockOpenAIStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue({
+            id: 'minimax-error-2049',
+            choices: null,
+            base_resp: {
+              status_code: 2049,
+              status_msg: 'invalid API Key',
+            },
+          });
+
+          controller.close();
+        },
+      });
+
+      const protocolStream = OpenAIStream(mockOpenAIStream);
+
+      const decoder = new TextDecoder();
+      const chunks = [];
+
+      // @ts-ignore
+      for await (const chunk of protocolStream) {
+        chunks.push(decoder.decode(chunk, { stream: true }));
+      }
+
+      expect(chunks[0]).toBe('id: minimax-error-2049\n');
+      expect(chunks[1]).toBe('event: error\n');
+      expect(chunks[2]).toContain('InvalidProviderAPIKey');
+      expect(chunks[2]).toContain('invalid API Key');
+    });
+
+    it('should handle MiniMax base_resp error with rate limit (1002)', async () => {
+      const mockOpenAIStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue({
+            id: 'minimax-error-1002',
+            choices: null,
+            base_resp: {
+              status_code: 1002,
+              status_msg: 'request frequency exceeds limit',
+            },
+          });
+
+          controller.close();
+        },
+      });
+
+      const protocolStream = OpenAIStream(mockOpenAIStream);
+
+      const decoder = new TextDecoder();
+      const chunks = [];
+
+      // @ts-ignore
+      for await (const chunk of protocolStream) {
+        chunks.push(decoder.decode(chunk, { stream: true }));
+      }
+
+      expect(chunks[0]).toBe('id: minimax-error-1002\n');
+      expect(chunks[1]).toBe('event: error\n');
+      expect(chunks[2]).toContain('QuotaLimitReached');
+      expect(chunks[2]).toContain('request frequency exceeds limit');
+    });
+
+    it('should handle MiniMax base_resp error with context window exceeded (1039)', async () => {
+      const mockOpenAIStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue({
+            id: 'minimax-error-1039',
+            choices: null,
+            base_resp: {
+              status_code: 1039,
+              status_msg: 'token limit exceeded',
+            },
+          });
+
+          controller.close();
+        },
+      });
+
+      const protocolStream = OpenAIStream(mockOpenAIStream);
+
+      const decoder = new TextDecoder();
+      const chunks = [];
+
+      // @ts-ignore
+      for await (const chunk of protocolStream) {
+        chunks.push(decoder.decode(chunk, { stream: true }));
+      }
+
+      expect(chunks[0]).toBe('id: minimax-error-1039\n');
+      expect(chunks[1]).toBe('event: error\n');
+      expect(chunks[2]).toContain('ExceededContextWindow');
+      expect(chunks[2]).toContain('token limit exceeded');
+    });
+
+    it('should handle MiniMax base_resp error with fallback to ProviderBizError', async () => {
+      const mockOpenAIStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue({
+            id: 'minimax-error-unknown',
+            choices: null,
+            base_resp: {
+              status_code: 9999,
+              status_msg: 'unknown error',
+            },
+          });
+
+          controller.close();
+        },
+      });
+
+      const protocolStream = OpenAIStream(mockOpenAIStream);
+
+      const decoder = new TextDecoder();
+      const chunks = [];
+
+      // @ts-ignore
+      for await (const chunk of protocolStream) {
+        chunks.push(decoder.decode(chunk, { stream: true }));
+      }
+
+      expect(chunks[0]).toBe('id: minimax-error-unknown\n');
+      expect(chunks[1]).toBe('event: error\n');
+      expect(chunks[2]).toContain('ProviderBizError');
+      expect(chunks[2]).toContain('unknown error');
     });
   });
 });

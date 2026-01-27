@@ -1,4 +1,5 @@
 import { ChatToolPayload, UIChatMessage } from '@lobechat/types';
+import i18n from 'i18next';
 
 import { MessageDispatch, messagesReducer } from './reducer';
 
@@ -13,7 +14,6 @@ describe('messagesReducer', () => {
         createdAt: 1629264000000,
         updatedAt: 1629264000000,
         role: 'user',
-        meta: {},
       },
       {
         id: 'message2',
@@ -21,7 +21,6 @@ describe('messagesReducer', () => {
         createdAt: 1629264000000,
         updatedAt: 1629264000000,
         role: 'assistant',
-        meta: {},
         tools: [
           { identifier: 'tool1', apiName: 'calculator', id: 'abc', type: 'default', arguments: '' },
         ],
@@ -56,133 +55,6 @@ describe('messagesReducer', () => {
 
       expect(newState).toEqual(initialState);
     });
-
-    it('should update a block in group message children when id matches a block', () => {
-      const stateWithGroup: UIChatMessage[] = [
-        ...initialState,
-        {
-          id: 'group1',
-          role: 'group',
-          content: '',
-          createdAt: 1629264000000,
-          updatedAt: 1629264000000,
-          meta: {},
-          children: [
-            {
-              id: 'block1',
-              content: 'Original block content',
-              tools: [
-                {
-                  id: 'tool1',
-                  identifier: 'search',
-                  apiName: 'search',
-                  type: 'builtin',
-                  arguments: '{"query": "test"}',
-                },
-              ],
-            },
-          ],
-        } as UIChatMessage,
-      ];
-
-      const payload: MessageDispatch = {
-        type: 'updateMessage',
-        id: 'block1',
-        value: { content: 'Updated block content' },
-      };
-
-      const newState = messagesReducer(stateWithGroup, payload);
-      const groupMessage = newState.find((m) => m.id === 'group1');
-      const block = groupMessage?.children?.find((b) => b.id === 'block1');
-
-      expect(block?.content).toBe('Updated block content');
-      expect(groupMessage?.updatedAt).toBeGreaterThan(1629264000000);
-    });
-
-    it('should update block tools in group message children', () => {
-      const stateWithGroup: UIChatMessage[] = [
-        ...initialState,
-        {
-          id: 'group1',
-          role: 'group',
-          content: '',
-          createdAt: 1629264000000,
-          updatedAt: 1629264000000,
-          meta: {},
-          children: [
-            {
-              id: 'block1',
-              content: 'Block content',
-              tools: [
-                {
-                  id: 'tool1',
-                  identifier: 'search',
-                  apiName: 'search',
-                  type: 'builtin',
-                  arguments: '{"query": "test"}',
-                },
-              ],
-            },
-          ],
-        } as UIChatMessage,
-      ];
-
-      const newTools = [
-        {
-          id: 'tool1',
-          identifier: 'search',
-          apiName: 'search',
-          type: 'builtin',
-          arguments: '{"query": "updated"}',
-          result: {
-            id: 'result1',
-            content: 'Search result',
-          },
-        },
-      ];
-
-      const payload: MessageDispatch = {
-        type: 'updateMessage',
-        id: 'block1',
-        value: { tools: newTools as any },
-      };
-
-      const newState = messagesReducer(stateWithGroup, payload);
-      const groupMessage = newState.find((m) => m.id === 'group1');
-      const block = groupMessage?.children?.find((b) => b.id === 'block1');
-
-      expect(block?.tools).toEqual(newTools);
-      expect(groupMessage?.updatedAt).toBeGreaterThan(1629264000000);
-    });
-
-    it('should not modify state when updating non-existent block in group message', () => {
-      const stateWithGroup: UIChatMessage[] = [
-        ...initialState,
-        {
-          id: 'group1',
-          role: 'group',
-          content: '',
-          createdAt: 1629264000000,
-          updatedAt: 1629264000000,
-          meta: {},
-          children: [
-            {
-              id: 'block1',
-              content: 'Block content',
-            },
-          ],
-        } as UIChatMessage,
-      ];
-
-      const payload: MessageDispatch = {
-        type: 'updateMessage',
-        id: 'nonexistentBlock',
-        value: { content: 'Updated content' },
-      };
-
-      const newState = messagesReducer(stateWithGroup, payload);
-      expect(newState).toEqual(stateWithGroup);
-    });
   });
 
   describe('unimplemented type', () => {
@@ -191,7 +63,7 @@ describe('messagesReducer', () => {
       const payload: MessageDispatch = { type: 'unimplementedType' };
 
       expect(() => messagesReducer(initialState, payload)).toThrowError(
-        '暂未实现的 type，请检查 reducer',
+        i18n.t('errors.unimplementedType', { ns: 'common' }),
       );
     });
   });
@@ -228,7 +100,6 @@ describe('messagesReducer', () => {
             createdAt: 1629264000000,
             updatedAt: 1629264000000,
             role: 'user',
-            meta: {},
             extra: { abc: '1' },
           } as UIChatMessage,
           ...initialState,
@@ -247,6 +118,54 @@ describe('messagesReducer', () => {
         id: 'nonexistent',
         key: 'testKey',
         value: 'testValue',
+      };
+
+      const newState = messagesReducer(initialState, payload);
+      expect(newState).toEqual(initialState);
+    });
+  });
+
+  describe('updateMessageMetadata', () => {
+    it('should merge update the metadata field of a message', () => {
+      const payload: MessageDispatch = {
+        type: 'updateMessageMetadata',
+        id: 'message1',
+        value: { activeBranchIndex: 1 },
+      };
+
+      const newState = messagesReducer(initialState, payload);
+      const updatedMessage = newState.find((m) => m.id === 'message1');
+
+      expect(updatedMessage?.metadata).toEqual({ activeBranchIndex: 1 });
+      expect(updatedMessage?.updatedAt).toBeGreaterThan(initialState[0].updatedAt);
+    });
+
+    it('should merge update the metadata field if metadata already exists', () => {
+      const state = [
+        {
+          ...initialState[0],
+          metadata: { activeBranchIndex: 0 },
+        },
+      ];
+
+      const payload: MessageDispatch = {
+        type: 'updateMessageMetadata',
+        id: 'message1',
+        value: { activeBranchIndex: 2 },
+      };
+
+      const newState = messagesReducer(state, payload);
+      const updatedMessage = newState.find((m) => m.id === 'message1');
+
+      expect(updatedMessage?.metadata).toEqual({ activeBranchIndex: 2 });
+      expect(updatedMessage?.updatedAt).toBeGreaterThan(initialState[0].updatedAt);
+    });
+
+    it('should not modify state if message is not found', () => {
+      const payload: MessageDispatch = {
+        type: 'updateMessageMetadata',
+        id: 'nonexistent',
+        value: { activeBranchIndex: 1 },
       };
 
       const newState = messagesReducer(initialState, payload);
@@ -310,7 +229,6 @@ describe('messagesReducer', () => {
         content: 'Tool content',
         createdAt: 1629264000000,
         updatedAt: 1629264000000,
-        meta: {},
         plugin: {
           identifier: 'tool1',
           apiName: 'calculator',
@@ -565,7 +483,6 @@ describe('messagesReducer', () => {
       expect(newMessage?.role).toBe('user');
       expect(newMessage?.createdAt).toBeDefined();
       expect(newMessage?.updatedAt).toBeDefined();
-      expect(newMessage?.meta).toEqual({});
     });
   });
 
@@ -611,249 +528,6 @@ describe('messagesReducer', () => {
       const payload: MessageDispatch = {
         type: 'deleteMessage',
         id: 'nonexistentMessage',
-      };
-
-      const newState = messagesReducer(initialState, payload);
-      expect(newState).toEqual(initialState);
-    });
-  });
-
-  describe('updateGroupBlockToolResult', () => {
-    it('should update a tool result in a group message block', () => {
-      const stateWithGroup: UIChatMessage[] = [
-        ...initialState,
-        {
-          id: 'group1',
-          role: 'group',
-          content: '',
-          createdAt: 1629264000000,
-          updatedAt: 1629264000000,
-          meta: {},
-          children: [
-            {
-              id: 'block1',
-              content: 'Assistant response',
-              tools: [
-                {
-                  id: 'tool1',
-                  identifier: 'search',
-                  apiName: 'search',
-                  type: 'builtin',
-                  arguments: '{"query": "test"}',
-                  result: {
-                    id: 'result1',
-                    content: 'Initial result',
-                  },
-                },
-              ],
-            },
-          ],
-        } as UIChatMessage,
-      ];
-
-      const payload: MessageDispatch = {
-        type: 'updateGroupBlockToolResult',
-        groupMessageId: 'group1',
-        blockId: 'block1',
-        toolId: 'tool1',
-        toolResult: {
-          id: 'result1',
-          content: 'Updated result content',
-          state: { foo: 'bar' },
-        },
-      };
-
-      const newState = messagesReducer(stateWithGroup, payload);
-      const groupMessage = newState.find((m) => m.id === 'group1');
-      const block = groupMessage?.children?.find((b) => b.id === 'block1');
-      const tool = block?.tools?.find((t) => t.id === 'tool1');
-
-      expect(tool?.result).toEqual({
-        id: 'result1',
-        content: 'Updated result content',
-        state: { foo: 'bar' },
-      });
-      expect(groupMessage?.updatedAt).toBeGreaterThan(1629264000000);
-    });
-
-    it('should not modify state if group message is not found', () => {
-      const payload: MessageDispatch = {
-        type: 'updateGroupBlockToolResult',
-        groupMessageId: 'nonexistent',
-        blockId: 'block1',
-        toolId: 'tool1',
-        toolResult: {
-          id: 'result1',
-          content: 'Updated result',
-        },
-      };
-
-      const newState = messagesReducer(initialState, payload);
-      expect(newState).toEqual(initialState);
-    });
-
-    it('should not modify state if block is not found', () => {
-      const stateWithGroup: UIChatMessage[] = [
-        ...initialState,
-        {
-          id: 'group1',
-          role: 'group',
-          content: '',
-          createdAt: 1629264000000,
-          updatedAt: 1629264000000,
-          meta: {},
-          children: [
-            {
-              id: 'block1',
-              content: 'Assistant response',
-              tools: [],
-            },
-          ],
-        } as UIChatMessage,
-      ];
-
-      const payload: MessageDispatch = {
-        type: 'updateGroupBlockToolResult',
-        groupMessageId: 'group1',
-        blockId: 'nonexistentBlock',
-        toolId: 'tool1',
-        toolResult: {
-          id: 'result1',
-          content: 'Updated result',
-        },
-      };
-
-      const newState = messagesReducer(stateWithGroup, payload);
-      expect(newState).toEqual(stateWithGroup);
-    });
-
-    it('should not modify state if tool is not found', () => {
-      const stateWithGroup: UIChatMessage[] = [
-        ...initialState,
-        {
-          id: 'group1',
-          role: 'group',
-          content: '',
-          createdAt: 1629264000000,
-          updatedAt: 1629264000000,
-          meta: {},
-          children: [
-            {
-              id: 'block1',
-              content: 'Assistant response',
-              tools: [
-                {
-                  id: 'tool1',
-                  identifier: 'search',
-                  apiName: 'search',
-                  type: 'builtin',
-                  arguments: '{"query": "test"}',
-                },
-              ],
-            },
-          ],
-        } as UIChatMessage,
-      ];
-
-      const payload: MessageDispatch = {
-        type: 'updateGroupBlockToolResult',
-        groupMessageId: 'group1',
-        blockId: 'block1',
-        toolId: 'nonexistentTool',
-        toolResult: {
-          id: 'result1',
-          content: 'Updated result',
-        },
-      };
-
-      const newState = messagesReducer(stateWithGroup, payload);
-      expect(newState).toEqual(stateWithGroup);
-    });
-  });
-
-  describe('addGroupBlock', () => {
-    it('should add a new block to group message children', () => {
-      const stateWithGroup: UIChatMessage[] = [
-        ...initialState,
-        {
-          id: 'group1',
-          role: 'group',
-          content: '',
-          createdAt: 1629264000000,
-          updatedAt: 1629264000000,
-          meta: {},
-          children: [
-            {
-              id: 'block1',
-              content: 'First block',
-            },
-          ],
-        } as UIChatMessage,
-      ];
-
-      const payload: MessageDispatch = {
-        type: 'addGroupBlock',
-        groupMessageId: 'group1',
-        blockId: 'block2',
-        value: {
-          id: 'block2',
-          content: 'Second block',
-        },
-      };
-
-      const newState = messagesReducer(stateWithGroup, payload);
-      const groupMessage = newState.find((m) => m.id === 'group1');
-
-      expect(groupMessage?.children).toHaveLength(2);
-      expect(groupMessage?.children?.[1]).toEqual({
-        id: 'block2',
-        content: 'Second block',
-      });
-      expect(groupMessage?.updatedAt).toBeGreaterThan(1629264000000);
-    });
-
-    it('should not modify state if group message is not found', () => {
-      const stateWithGroup: UIChatMessage[] = [
-        ...initialState,
-        {
-          id: 'group1',
-          role: 'group',
-          content: '',
-          createdAt: 1629264000000,
-          updatedAt: 1629264000000,
-          meta: {},
-          children: [
-            {
-              id: 'block1',
-              content: 'First block',
-            },
-          ],
-        } as UIChatMessage,
-      ];
-
-      const payload: MessageDispatch = {
-        type: 'addGroupBlock',
-        groupMessageId: 'nonexistentGroup',
-        blockId: 'block2',
-        value: {
-          id: 'block2',
-          content: 'Second block',
-        },
-      };
-
-      const newState = messagesReducer(stateWithGroup, payload);
-      expect(newState).toEqual(stateWithGroup);
-    });
-
-    it('should not modify state if message is not a group message', () => {
-      const payload: MessageDispatch = {
-        type: 'addGroupBlock',
-        groupMessageId: 'message1',
-        blockId: 'block2',
-        value: {
-          id: 'block2',
-          content: 'Second block',
-        },
       };
 
       const newState = messagesReducer(initialState, payload);

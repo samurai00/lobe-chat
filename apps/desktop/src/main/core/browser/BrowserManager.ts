@@ -1,14 +1,11 @@
-import {
-  MainBroadcastEventKey,
-  MainBroadcastParams,
-  OpenSettingsWindowOptions,
-} from '@lobechat/electron-client-ipc';
+import { MainBroadcastEventKey, MainBroadcastParams } from '@lobechat/electron-client-ipc';
 import { WebContents } from 'electron';
 
 import { createLogger } from '@/utils/logger';
 
 import {
   AppBrowsersIdentifiers,
+  BrowsersIdentifiers,
   WindowTemplateIdentifiers,
   appBrowsers,
   windowTemplates,
@@ -33,20 +30,13 @@ export class BrowserManager {
   }
 
   getMainWindow() {
-    return this.retrieveByIdentifier('chat');
+    return this.retrieveByIdentifier(BrowsersIdentifiers.app);
   }
 
   showMainWindow() {
     logger.debug('Showing main window');
     const window = this.getMainWindow();
     window.show();
-  }
-
-  showSettingsWindow() {
-    logger.debug('Showing settings window');
-    const window = this.retrieveByIdentifier('settings');
-    window.show();
-    return window;
   }
 
   broadcastToAllWindows = <T extends MainBroadcastEventKey>(
@@ -67,50 +57,6 @@ export class BrowserManager {
     logger.debug(`Broadcasting event ${event} to window: ${identifier}`);
     this.browsers.get(identifier)?.broadcast(event, data);
   };
-
-  /**
-   * Display the settings window and navigate to a specific tab
-   * @param tab Settings window sub-path tab
-   */
-  async showSettingsWindowWithTab(options?: OpenSettingsWindowOptions) {
-    const tab = options?.tab;
-    const searchParams = options?.searchParams;
-
-    const query = new URLSearchParams();
-    if (searchParams) {
-      Object.entries(searchParams).forEach(([key, value]) => {
-        if (value !== undefined) query.set(key, value);
-      });
-    }
-
-    if (tab && tab !== 'common' && !query.has('active')) {
-      query.set('active', tab);
-    }
-
-    const queryString = query.toString();
-    const activeTab = query.get('active') ?? tab;
-
-    logger.debug(
-      `Showing settings window with navigation: active=${activeTab || 'default'}, query=${
-        queryString || 'none'
-      }`,
-    );
-
-    if (queryString) {
-      const browser = await this.redirectToPage('settings', undefined, queryString);
-
-      // make provider page more large
-      if (activeTab?.startsWith('provider')) {
-        logger.debug('Resizing window for provider settings');
-        browser.setWindowSize({ height: 1000, width: 1400 });
-        browser.moveToCenter();
-      }
-
-      return browser;
-    } else {
-      return this.showSettingsWindow();
-    }
-  }
 
   /**
    * Navigate window to specific sub-path
@@ -297,6 +243,21 @@ export class BrowserManager {
     } else {
       browser?.browserWindow.maximize();
     }
+  }
+
+  setWindowSize(identifier: string, size: { height?: number; width?: number }) {
+    const browser = this.browsers.get(identifier);
+    browser?.setWindowSize(size);
+  }
+
+  getWindowSize(identifier: string) {
+    const browser = this.browsers.get(identifier);
+    return browser?.browserWindow.getBounds();
+  }
+
+  setWindowMinimumSize(identifier: string, size: { height?: number; width?: number }) {
+    const browser = this.browsers.get(identifier);
+    browser?.setWindowMinimumSize(size);
   }
 
   getIdentifierByWebContents(webContents: WebContents): string | null {

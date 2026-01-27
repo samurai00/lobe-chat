@@ -5,10 +5,10 @@ import { z } from 'zod';
  */
 export type HumanInterventionPolicy =
   | 'never' // Never intervene, auto-execute
-  | 'always' // Always require intervention
-  | 'first'; // Require intervention on first call only
+  | 'required' // Need intervention (can be bypassed by user's auto-run mode)
+  | 'always'; // Always need intervention (cannot be bypassed by auto-run mode)
 
-export const HumanInterventionPolicySchema = z.enum(['never', 'always', 'first']);
+export const HumanInterventionPolicySchema = z.enum(['never', 'required', 'always']);
 
 /**
  * Argument Matcher for parameter-level filtering
@@ -118,6 +118,68 @@ export const HumanInterventionResponseSchema = z.object({
 });
 
 /**
+ * User's global intervention configuration
+ * Applied across all tools in the session
+ */
+export interface UserInterventionConfig {
+  /**
+   * Allow list of approved tools (used in 'allow-list' mode)
+   * Format: "identifier/apiName"
+   *
+   * Examples:
+   * - "bash/bash"
+   * - "web-browsing/crawlSinglePage"
+   * - "search/search"
+   */
+  allowList?: string[];
+
+  /**
+   * Tool approval mode
+   * - auto-run: Automatically approve all tools without user consent
+   * - allow-list: Only approve tools in the allow list
+   * - manual: Use tool's own humanIntervention config (default)
+   * - headless: Fully automated mode for async tasks - all tools execute automatically,
+   *             security blacklist tools are skipped (not blocked)
+   */
+  approvalMode: 'auto-run' | 'allow-list' | 'manual' | 'headless';
+}
+
+export const UserInterventionConfigSchema = z.object({
+  allowList: z.array(z.string()).optional(),
+  approvalMode: z.enum(['auto-run', 'allow-list', 'manual', 'headless']),
+});
+
+/**
+ * Security Blacklist Rule
+ * Used to forcefully block dangerous operations regardless of user settings
+ */
+export interface SecurityBlacklistRule {
+  /**
+   * Description of why this rule exists (for error messages)
+   */
+  description: string;
+
+  /**
+   * Parameter filter - matches against tool call arguments
+   * Same format as HumanInterventionRule.match
+   */
+  match: Record<string, ArgumentMatcher>;
+}
+
+export const SecurityBlacklistRuleSchema = z.object({
+  description: z.string(),
+  match: z.record(z.string(), ArgumentMatcherSchema),
+});
+
+/**
+ * Security Blacklist Configuration
+ * A list of rules that will always block execution and require intervention
+ */
+export type SecurityBlacklistConfig = SecurityBlacklistRule[];
+
+export const SecurityBlacklistConfigSchema = z.array(SecurityBlacklistRuleSchema);
+
+/**
  * Parameters for shouldIntervene method
  */
 export interface ShouldInterveneParams {
@@ -131,6 +193,13 @@ export interface ShouldInterveneParams {
    * @default []
    */
   confirmedHistory?: string[];
+
+  /**
+   * Security blacklist rules that will be checked first
+   * These rules override all other settings including auto-run mode
+   * @default []
+   */
+  securityBlacklist?: SecurityBlacklistConfig;
 
   /**
    * Tool call arguments to check against rules
@@ -148,6 +217,7 @@ export interface ShouldInterveneParams {
 export const ShouldInterveneParamsSchema = z.object({
   config: HumanInterventionConfigSchema.optional(),
   confirmedHistory: z.array(z.string()).optional(),
+  securityBlacklist: SecurityBlacklistConfigSchema.optional(),
   toolArgs: z.record(z.string(), z.any()).optional(),
   toolKey: z.string().optional(),
 });

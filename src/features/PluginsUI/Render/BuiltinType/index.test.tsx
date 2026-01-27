@@ -4,11 +4,17 @@ import { describe, expect, it, vi } from 'vitest';
 import BuiltinType from './index';
 
 // Mock renders module
+const mockWebBrowsingRender = vi.fn(({ content }) => <div>WebBrowsingRender: {content}</div>);
+const mockCodeInterpreterRender = vi.fn(({ content }) => (
+  <div>CodeInterpreterRender: {content}</div>
+));
+
 vi.mock('@/tools/renders', () => ({
-  BuiltinToolsRenders: {
-    'lobe-web-browsing': vi.fn(({ content }) => <div>WebBrowsingRender: {content}</div>),
-    'lobe-code-interpreter': vi.fn(({ content }) => <div>CodeInterpreterRender: {content}</div>),
-  },
+  getBuiltinRender: vi.fn((identifier, apiName) => {
+    if (identifier === 'lobe-web-browsing') return mockWebBrowsingRender;
+    if (identifier === 'lobe-code-interpreter') return mockCodeInterpreterRender;
+    return undefined;
+  }),
 }));
 
 // Mock useParseContent hook
@@ -18,24 +24,24 @@ vi.mock('../useParseContent', () => ({
 
 describe('BuiltinType', () => {
   it('should not render anything if identifier is not provided', () => {
-    const { container } = render(<BuiltinType content="..." id="123" />);
+    const { container } = render(<BuiltinType content="..." messageId="123" />);
     expect(container).toBeEmptyDOMElement();
   });
 
   it('should not render anything if identifier is unknown', () => {
-    const { container } = render(<BuiltinType content="{}" id="123" identifier="unknown" />);
+    const { container } = render(<BuiltinType content="{}" messageId="123" identifier="unknown" />);
     expect(container).toBeEmptyDOMElement();
   });
 
   it('should render the correct renderer for web browsing', () => {
     const content = '{"query":"test"}';
-    render(<BuiltinType content={content} id="123" identifier="lobe-web-browsing" />);
+    render(<BuiltinType content={content} messageId="123" identifier="lobe-web-browsing" />);
     expect(screen.getByText(`WebBrowsingRender: ${content}`)).toBeInTheDocument();
   });
 
   it('should render the correct renderer for code interpreter', () => {
     const content = '{"code":"print(1)"}';
-    render(<BuiltinType content={content} id="123" identifier="lobe-code-interpreter" />);
+    render(<BuiltinType content={content} messageId="123" identifier="lobe-code-interpreter" />);
     expect(screen.getByText(`CodeInterpreterRender: ${content}`)).toBeInTheDocument();
   });
 
@@ -48,7 +54,8 @@ describe('BuiltinType', () => {
     render(
       <BuiltinType
         content={content}
-        id="msg-123"
+        messageId="msg-123"
+        toolCallId="tool-call-123"
         identifier="lobe-web-browsing"
         arguments={args}
         pluginState={pluginState}

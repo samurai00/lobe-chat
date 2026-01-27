@@ -24,7 +24,7 @@ Desktop.ini
 .windsurfrules
 *.code-workspace
 .vscode/sessions.json
-
+prd
 # Temporary files
 .temp/
 temp/
@@ -93,7 +93,6 @@ robots.txt
 .husky/prepare-commit-msg
 
 # Documents and media
-*.patch
 *.pdf
 
 # Cloud service keys
@@ -103,18 +102,26 @@ vertex-ai-key.json
 .local/
 .claude/
 .mcp.json
-
 CLAUDE.local.md
+.agent/
 
 # MCP tools
 .serena/**
+
+# Migration scripts data
+scripts/clerk-to-betterauth/test/*.csv
+scripts/clerk-to-betterauth/test/*.json
+scripts/clerk-to-betterauth/prod/*.csv
+scripts/clerk-to-betterauth/prod/*.json
 
 # Misc
 ./packages/lobe-ui
 *.ppt*
 *.doc*
 *.xls*
-
-prd
-GEMINI.md
 e2e/reports
+out
+i18n-unused-keys-report.json
+.vitest-reports
+
+pnpm-lock.yaml

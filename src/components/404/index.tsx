@@ -1,14 +1,17 @@
 'use client';
 
-import { Button, FluentEmoji } from '@lobehub/ui';
-import Link from 'next/link';
-import { memo } from 'react';
+import { Button, Flexbox, FluentEmoji } from '@lobehub/ui';
+import { ReactNode, memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Flexbox } from 'react-layout-kit';
 
 import { MAX_WIDTH } from '@/const/layoutTokens';
 
-const NotFound = memo(() => {
+const NotFound = memo<{
+  desc?: string;
+  extra?: ReactNode;
+  status?: number | string;
+  title?: string;
+}>(({ extra, status = 404, title, desc }) => {
   const { t } = useTranslation('error');
   return (
     <Flexbox align={'center'} justify={'center'} style={{ minHeight: '100%', width: '100%' }}>
@@ -23,20 +26,21 @@ const NotFound = memo(() => {
           zIndex: 0,
         }}
       >
-        404
+        {status}
       </h1>
       <FluentEmoji emoji={'👀'} size={64} />
       <h2 style={{ fontWeight: 'bold', marginTop: '1em', textAlign: 'center' }}>
-        {t('notFound.title')}
+        {title || t('notFound.title')}
       </h2>
-      <p style={{ lineHeight: '1.8', marginBottom: '2em' }}>
-        {t('notFound.desc')}
-        <br />
-        <div style={{ textAlign: 'center' }}>{t('notFound.check')}</div>
-      </p>
-      <Link href="/">
-        <Button type={'primary'}>{t('notFound.backHome')}</Button>
-      </Link>
+      <div style={{ lineHeight: '1.8', marginBottom: '2em', textAlign: 'center' }}>
+        <div>{desc || t('notFound.desc')}</div>
+        <div style={{ marginTop: '0.5em' }}>{t('notFound.check')}</div>
+      </div>
+      {extra || (
+        <Button onClick={() => (window.location.href = '/')} type={'primary'}>
+          {t('notFound.backHome')}
+        </Button>
+      )}
     </Flexbox>
   );
 });

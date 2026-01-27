@@ -1,8 +1,8 @@
-import { ChatTTS } from '@lobechat/types';
-import { StateCreator } from 'zustand/vanilla';
+import { type ChatTTS } from '@lobechat/types';
+import { type StateCreator } from 'zustand/vanilla';
 
 import { messageService } from '@/services/message';
-import { ChatStore } from '@/store/chat/store';
+import { type ChatStore } from '@/store/chat/store';
 
 /**
  * enhance chat action like translate,tts
@@ -29,7 +29,15 @@ export const chatTTS: StateCreator<ChatStore, [['zustand/devtools', never]], [],
   },
 
   updateMessageTTS: async (id, data) => {
+    // Optimistic update
+    get().internal_dispatchMessage({
+      id,
+      key: 'tts',
+      type: 'updateMessageExtra',
+      value: data === false ? undefined : data,
+    });
+
+    // Persist to database
     await messageService.updateMessageTTS(id, data);
-    await get().refreshMessages();
   },
 });

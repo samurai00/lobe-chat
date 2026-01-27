@@ -1,56 +1,78 @@
-import { CategoryItem, CategoryListQuery, PluginManifest } from '@lobehub/market-sdk';
-import { CallReportRequest, InstallReportRequest } from '@lobehub/market-types';
+import {
+  type CategoryItem,
+  type CategoryListQuery,
+  type PluginManifest,
+} from '@lobehub/market-sdk';
+import {
+  AgentEventRequest,
+  type CallReportRequest,
+  type InstallReportRequest,
+  type PluginEventRequest,
+} from '@lobehub/market-types';
 
 import { lambdaClient } from '@/libs/trpc/client';
 import { globalHelpers } from '@/store/global/helpers';
 import { useUserStore } from '@/store/user';
-import { preferenceSelectors } from '@/store/user/selectors';
+import { userGeneralSettingsSelectors } from '@/store/user/selectors';
 import {
-  AssistantListResponse,
-  AssistantQueryParams,
-  DiscoverAssistantDetail,
-  DiscoverMcpDetail,
-  DiscoverModelDetail,
-  DiscoverPluginDetail,
-  DiscoverProviderDetail,
-  IdentifiersResponse,
-  McpListResponse,
-  McpQueryParams,
-  ModelListResponse,
-  ModelQueryParams,
-  PluginListResponse,
-  PluginQueryParams,
-  ProviderListResponse,
-  ProviderQueryParams,
+  type AssistantListResponse,
+  type AssistantMarketSource,
+  type AssistantQueryParams,
+  type DiscoverAssistantDetail,
+  type DiscoverMcpDetail,
+  type DiscoverModelDetail,
+  type DiscoverPluginDetail,
+  type DiscoverProviderDetail,
+  type DiscoverUserProfile,
+  type GroupAgentQueryParams,
+  type IdentifiersResponse,
+  type McpListResponse,
+  type McpQueryParams,
+  type ModelListResponse,
+  type ModelQueryParams,
+  type PluginListResponse,
+  type PluginQueryParams,
+  type ProviderListResponse,
+  type ProviderQueryParams,
 } from '@/types/discover';
-import { MCPPluginListParams } from '@/types/plugins';
+import { type MCPPluginListParams } from '@/types/plugins';
 import { cleanObject } from '@/utils/object';
 
 class DiscoverService {
   private _isRetrying = false;
 
   // ============================== Assistant Market ==============================
-  getAssistantCategories = async (params: CategoryListQuery = {}): Promise<CategoryItem[]> => {
+  getAssistantCategories = async (
+    params: CategoryListQuery & { source?: AssistantMarketSource } = {},
+  ): Promise<CategoryItem[]> => {
     const locale = globalHelpers.getCurrentLanguage();
+    const { source, ...rest } = params;
     return lambdaClient.market.getAssistantCategories.query({
-      ...params,
+      ...rest,
       locale,
+      source,
     });
   };
 
   getAssistantDetail = async (params: {
     identifier: string;
     locale?: string;
+    source?: AssistantMarketSource;
+    version?: string;
   }): Promise<DiscoverAssistantDetail | undefined> => {
     const locale = globalHelpers.getCurrentLanguage();
     return lambdaClient.market.getAssistantDetail.query({
-      ...params,
+      identifier: params.identifier,
       locale,
+      source: params.source,
+      version: params.version,
     });
   };
 
-  getAssistantIdentifiers = async (): Promise<IdentifiersResponse> => {
-    return lambdaClient.market.getAssistantIdentifiers.query();
+  getAssistantIdentifiers = async (
+    params: { source?: AssistantMarketSource } = {},
+  ): Promise<IdentifiersResponse> => {
+    return lambdaClient.market.getAssistantIdentifiers.query(params);
   };
 
   getAssistantList = async (params: AssistantQueryParams = {}): Promise<AssistantListResponse> => {
@@ -137,7 +159,7 @@ class DiscoverService {
   };
 
   /**
-   * 上报 MCP 插件安装结果
+   * Report MCP plugin installation result
    */
   reportMcpInstallResult = async ({
     success,
@@ -147,7 +169,7 @@ class DiscoverService {
     ...params
   }: InstallReportRequest) => {
     // if user don't allow tracing, just not report installation
-    const allow = preferenceSelectors.userAllowTrace(useUserStore.getState());
+    const allow = userGeneralSettingsSelectors.telemetry(useUserStore.getState());
 
     if (!allow) return;
     await this.injectMPToken();
@@ -168,11 +190,11 @@ class DiscoverService {
   };
 
   /**
-   * 上报插件调用结果
+   * Report plugin call result
    */
   reportPluginCall = async (reportData: CallReportRequest) => {
     // if user don't allow tracing , just not report calling
-    const allow = preferenceSelectors.userAllowTrace(useUserStore.getState());
+    const allow = userGeneralSettingsSelectors.telemetry(useUserStore.getState());
 
     if (!allow) return;
 
@@ -180,6 +202,54 @@ class DiscoverService {
 
     lambdaClient.market.reportCall.mutate(cleanObject(reportData)).catch((reportError) => {
       console.warn('Failed to report call:', reportError);
+    });
+  };
+
+  reportMcpEvent = async (eventData: PluginEventRequest) => {
+    const allow = userGeneralSettingsSelectors.telemetry(useUserStore.getState());
+    if (!allow) return;
+
+    await this.injectMPToken();
+
+    const payload = cleanObject({
+      ...eventData,
+      source: eventData.source ?? 'community/mcp',
+    });
+
+    lambdaClient.market.reportMcpEvent.mutate(payload).catch((error) => {
+      console.warn('Failed to report MCP event:', error);
+    });
+  };
+
+  /**
+   * Report agent installation to increase install count
+   */
+  reportAgentInstall = async (identifier: string) => {
+    // if user don't allow tracing, just not report installation
+    const allow = userGeneralSettingsSelectors.telemetry(useUserStore.getState());
+
+    if (!allow) return;
+
+    await this.injectMPToken();
+
+    lambdaClient.market.reportAgentInstall.mutate({ identifier }).catch((reportError) => {
+      console.warn('Failed to report agent installation:', reportError);
+    });
+  };
+
+  reportAgentEvent = async (eventData: AgentEventRequest) => {
+    const allow = userGeneralSettingsSelectors.telemetry(useUserStore.getState());
+    if (!allow) return;
+
+    await this.injectMPToken();
+
+    const payload = cleanObject({
+      ...eventData,
+      source: eventData.source ?? 'community/agent',
+    });
+
+    lambdaClient.market.reportAgentEvent.mutate(payload).catch((error) => {
+      console.warn('Failed to report Agent event:', error);
     });
   };
 
@@ -278,32 +348,45 @@ class DiscoverService {
     });
   };
 
+  // ============================== User Profile ==============================
+
+  getUserInfo = async (params: {
+    locale?: string;
+    username: string;
+  }): Promise<DiscoverUserProfile | undefined> => {
+    const locale = globalHelpers.getCurrentLanguage();
+    return lambdaClient.market.getUserInfo.query({
+      locale,
+      username: params.username,
+    });
+  };
+
   // ============================== Helpers ==============================
 
-  private async injectMPToken() {
+  async injectMPToken() {
     if (typeof localStorage === 'undefined') return;
 
-    // 检查服务端设置的状态标记 cookie
+    // Check server-set status flag cookie
     const tokenStatus = this.getTokenStatusFromCookie();
     if (tokenStatus === 'active') return;
 
     let clientId: string;
     let clientSecret: string;
 
-    // 1. 从 localStorage 获取客户端信息
+    // 1. Get client information from localStorage
     const item = localStorage.getItem('_mpc');
     if (!item) {
-      // 2. 如果没有，则注册客户端
+      // 2. If not exists, register client
       const clientInfo = await this.registerClient();
       clientId = clientInfo.clientId;
       clientSecret = clientInfo.clientSecret;
 
-      // 3. Base64 编码并保存到 localStorage
+      // 3. Base64 encode and save to localStorage
       const clientData = JSON.stringify({ clientId, clientSecret });
       const encodedData = btoa(clientData);
       localStorage.setItem('_mpc', encodedData);
     } else {
-      // 4. 如果有，则解码获取客户端信息
+      // 4. If exists, decode to get client information
       try {
         const decodedData = atob(item);
         const clientData = JSON.parse(decodedData);
@@ -311,7 +394,7 @@ class DiscoverService {
         clientSecret = clientData.clientSecret;
       } catch (error) {
         console.error('Failed to decode client data:', error);
-        // 如果解码失败，重新注册
+        // If decoding fails, re-register
         const clientInfo = await this.registerClient();
         clientId = clientInfo.clientId;
         clientSecret = clientInfo.clientSecret;
@@ -322,23 +405,23 @@ class DiscoverService {
       }
     }
 
-    // 5. 获取访问令牌（服务端会自动设置 HTTP-Only cookie）
+    // 5. Get access token (server will automatically set HTTP-Only cookie)
     try {
       const result = await lambdaClient.market.registerM2MToken.query({
         clientId,
         clientSecret,
       });
 
-      // 检查服务端返回的结果
+      // Check server response result
       if (!result.success) {
         console.warn(
           'Token registration failed, client credentials may be invalid. Clearing and retrying...',
         );
 
-        // 清空相关的本地存储数据
+        // Clear related local storage data
         localStorage.removeItem('_mpc');
 
-        // 重新执行完整的注册流程（但只重试一次）
+        // Re-execute the complete registration process (but only retry once)
         if (!this._isRetrying) {
           this._isRetrying = true;
           try {
@@ -370,6 +453,58 @@ class DiscoverService {
     }
     return null;
   }
+
+  // ============================== Group Agent Market ==============================
+
+  getGroupAgentCategories = async (params: CategoryListQuery = {}): Promise<CategoryItem[]> => {
+    const locale = globalHelpers.getCurrentLanguage();
+    return lambdaClient.market.getGroupAgentCategories.query({
+      ...params,
+      locale,
+    });
+  };
+
+  getGroupAgentDetail = async (params: {
+    identifier: string;
+    locale?: string;
+    version?: string;
+  }): Promise<any> => {
+    const locale = globalHelpers.getCurrentLanguage();
+    return lambdaClient.market.getGroupAgentDetail.query({
+      identifier: params.identifier,
+      locale,
+      version: params.version,
+    });
+  };
+
+  getGroupAgentIdentifiers = async (): Promise<IdentifiersResponse> => {
+    return lambdaClient.market.getGroupAgentIdentifiers.query();
+  };
+
+  getGroupAgentList = async (params: GroupAgentQueryParams = {}): Promise<any> => {
+    const locale = globalHelpers.getCurrentLanguage();
+    return lambdaClient.market.getGroupAgentList.query(
+      {
+        ...params,
+        locale,
+        page: params.page ? Number(params.page) : 1,
+        pageSize: params.pageSize ? Number(params.pageSize) : 20,
+      },
+      { context: { showNotification: false } },
+    );
+  };
+
+  reportGroupAgentEvent = async (params: {
+    event: 'add' | 'chat' | 'click';
+    identifier: string;
+    source?: string;
+  }): Promise<void> => {
+    await lambdaClient.market.reportGroupAgentEvent.mutate(params);
+  };
+
+  reportGroupAgentInstall = async (identifier: string): Promise<void> => {
+    await lambdaClient.market.reportGroupAgentInstall.mutate({ identifier });
+  };
 }
 
 export const discoverService = new DiscoverService();

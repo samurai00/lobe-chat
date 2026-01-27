@@ -1,9 +1,8 @@
+import type { ImportPgDataStructure } from '@lobechat/types';
 import { eq, inArray } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ImportPgDataStructure } from '@/types/export';
-
-import { getTestDB } from '../../../models/__tests__/_util';
+import { getTestDB } from '../../../core/getTestDB';
 import * as Schema from '../../../schemas';
 import { DataImporterRepos } from '../index';
 import agentsData from './fixtures/agents.json';

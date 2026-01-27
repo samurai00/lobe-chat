@@ -11,7 +11,7 @@ describe('featureFlagsSelectors', () => {
       featureFlags: {
         ...mapFeatureFlagsEnvToState(DEFAULT_FEATURE_FLAGS),
         isAgentEditable: false,
-        showLLM: false,
+        showProvider: true,
         showMarket: true,
         showAiImage: true,
       },
@@ -20,29 +20,13 @@ describe('featureFlagsSelectors', () => {
     const result = featureFlagsSelectors(store.getState());
 
     expect(result.isAgentEditable).toBe(false);
-    expect(result.showLLM).toBe(false);
+    expect(result.showProvider).toBe(true);
     expect(result.showMarket).toBe(true);
     expect(result.showAiImage).toBe(true);
   });
 });
 
 describe('serverConfigSelectors', () => {
-  describe('enabledOAuthSSO', () => {
-    it('should return enabledOAuthSSO value from store', () => {
-      const store = initServerConfigStore({
-        serverConfig: {
-          enabledOAuthSSO: true,
-          telemetry: {},
-          aiProvider: {},
-        },
-      });
-
-      const result = serverConfigSelectors.enabledOAuthSSO(store.getState());
-
-      expect(result).toBe(true);
-    });
-  });
-
   describe('enabledTelemetryChat', () => {
     it('should return langfuse value from store when defined', () => {
       const store = initServerConfigStore({

@@ -7,9 +7,9 @@ const log = debug('context-engine:processor:GroupMessageFlattenProcessor');
 
 /**
  * Group Message Flatten Processor
- * Responsible for flattening role=group messages into standard assistant + tool message sequences
+ * Responsible for flattening role=assistantGroup and role=supervisor messages into standard assistant + tool message sequences
  *
- * Group messages are created when assistant messages with tools are merged with their tool results.
+ * AssistantGroup/Supervisor messages are created when assistant messages with tools are merged with their tool results.
  * This processor converts them back to a flat structure that AI models can understand.
  */
 export class GroupMessageFlattenProcessor extends BaseProcessor {
@@ -31,8 +31,11 @@ export class GroupMessageFlattenProcessor extends BaseProcessor {
 
     // Process each message
     for (const message of clonedContext.messages) {
-      // Check if this is a group message with children field
-      if (message.role === 'group' && message.children) {
+      // Check if this is an assistantGroup or supervisor message with children field
+      if (
+        (message.role === 'assistantGroup' || message.role === 'supervisor') &&
+        message.children
+      ) {
         // If children array is empty, skip this message entirely (no content to flatten)
         if (message.children.length === 0) {
           continue;
@@ -41,7 +44,9 @@ export class GroupMessageFlattenProcessor extends BaseProcessor {
         processedCount++;
         groupMessagesFlattened++;
 
-        log(`Flattening group message ${message.id} with ${message.children.length} children`);
+        log(
+          `Flattening ${message.role} message ${message.id} with ${message.children.length} children`,
+        );
 
         // Flatten each child
         for (const child of message.children) {
@@ -146,7 +151,7 @@ export class GroupMessageFlattenProcessor extends BaseProcessor {
     clonedContext.metadata.toolMessagesCreated = toolMessagesCreated;
 
     log(
-      `Group message flatten processing completed: ${groupMessagesFlattened} groups flattened, ${assistantMessagesCreated} assistant messages created, ${toolMessagesCreated} tool messages created`,
+      `AssistantGroup/Supervisor message flatten processing completed: ${groupMessagesFlattened} groups flattened, ${assistantMessagesCreated} assistant messages created, ${toolMessagesCreated} tool messages created`,
     );
 
     return this.markAsExecuted(clonedContext);

@@ -1,9 +1,9 @@
-import { SWRResponse } from 'swr';
-import { StateCreator } from 'zustand/vanilla';
+import { type SWRResponse } from 'swr';
+import { type StateCreator } from 'zustand/vanilla';
 
 import { useOnlyFetchOnceSWR } from '@/libs/swr';
 import { globalService } from '@/services/global';
-import { GlobalRuntimeConfig } from '@/types/serverConfig';
+import { type GlobalRuntimeConfig } from '@/types/serverConfig';
 
 import type { ServerConfigStore } from './store';
 
@@ -25,7 +25,11 @@ export const createServerConfigSlice: StateCreator<
       {
         onSuccess: (data) => {
           set(
-            { featureFlags: data.serverFeatureFlags, serverConfig: data.serverConfig },
+            {
+              featureFlags: data.serverFeatureFlags,
+              serverConfig: data.serverConfig,
+              serverConfigInit: true,
+            },
             false,
             'initServerConfig',
           );

@@ -1,19 +1,20 @@
-import { StateCreator } from 'zustand/vanilla';
+import { type StateCreator } from 'zustand/vanilla';
 
-import { ChatStore } from '@/store/chat/store';
+import { type ChatStore } from '@/store/chat/store';
 
-import { AIGenerateAction, generateAIChat } from './generateAIChat';
-import { AIGenerateV2Action, generateAIChatV2 } from './generateAIChatV2';
-import { ChatMemoryAction, chatMemory } from './memory';
-import { ChatRAGAction, chatRag } from './rag';
+import { type ConversationControlAction, conversationControl } from './conversationControl';
+import { type ConversationLifecycleAction, conversationLifecycle } from './conversationLifecycle';
+import { type ChatMemoryAction, chatMemory } from './memory';
+import { type StreamingExecutorAction, streamingExecutor } from './streamingExecutor';
+import { type StreamingStatesAction, streamingStates } from './streamingStates';
 
 export interface ChatAIChatAction
-  extends ChatRAGAction,
+  extends
     ChatMemoryAction,
-    AIGenerateAction,
-    AIGenerateV2Action {
-  /**/
-}
+    ConversationLifecycleAction,
+    ConversationControlAction,
+    StreamingExecutorAction,
+    StreamingStatesAction {}
 
 export const chatAiChat: StateCreator<
   ChatStore,
@@ -21,8 +22,9 @@ export const chatAiChat: StateCreator<
   [],
   ChatAIChatAction
 > = (...params) => ({
-  ...chatRag(...params),
-  ...generateAIChat(...params),
   ...chatMemory(...params),
-  ...generateAIChatV2(...params),
+  ...conversationLifecycle(...params),
+  ...conversationControl(...params),
+  ...streamingExecutor(...params),
+  ...streamingStates(...params),
 });

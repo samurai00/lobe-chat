@@ -1,5 +1,5 @@
-import { UserStore } from '@/store/user';
-import { UserKeyVaults } from '@/types/user/settings';
+import { type UserStore } from '@/store/user';
+import { type UserKeyVaults } from '@/types/user/settings';
 
 import { currentSettings } from './settings';
 
@@ -10,12 +10,7 @@ const getVaultByProvider = (provider: string) => (s: UserStore) =>
   // @ts-ignore
   (keyVaultsSettings(s)[provider] || {}) as any;
 
-const password = (s: UserStore) => keyVaultsSettings(s).password || '';
-
 export const keyVaultsConfigSelectors = {
   getVaultByProvider,
-
   keyVaultsSettings,
-
-  password,
 };

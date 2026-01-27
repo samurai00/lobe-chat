@@ -1,78 +1,160 @@
-import { isDeprecatedEdition, isDesktop, isUsePgliteDB } from '@lobechat/const';
-import { getModelPropertyWithFallback } from '@lobechat/model-runtime';
-import { uniqBy } from 'lodash-es';
+import { getModelPropertyWithFallback, resolveImageSinglePrice } from '@lobechat/model-runtime';
+import { uniqBy } from 'es-toolkit/compat';
 import {
-  AIImageModelCard,
-  EnabledAiModel,
-  LobeDefaultAiModelListItem,
-  ModelAbilities,
+  type AIImageModelCard,
+  type EnabledAiModel,
+  type LobeDefaultAiModelListItem,
+  type ModelAbilities,
+  type ModelParamsSchema,
+  type Pricing,
 } from 'model-bank';
-import { SWRResponse, mutate } from 'swr';
-import { StateCreator } from 'zustand/vanilla';
+import type { SWRResponse } from 'swr';
+import { type StateCreator } from 'zustand/vanilla';
 
-import { useClientDataSWR } from '@/libs/swr';
+import { mutate, useClientDataSWR } from '@/libs/swr';
 import { aiProviderService } from '@/services/aiProvider';
-import { AiInfraStore } from '@/store/aiInfra/store';
+import { type AiInfraStore } from '@/store/aiInfra/store';
 import { useUserStore } from '@/store/user';
 import { authSelectors } from '@/store/user/selectors';
 import {
-  AiProviderDetailItem,
-  AiProviderListItem,
-  AiProviderRuntimeState,
-  AiProviderSortMap,
+  type AiProviderDetailItem,
+  type AiProviderListItem,
+  type AiProviderRuntimeState,
+  type AiProviderSortMap,
   AiProviderSourceEnum,
-  CreateAiProviderParams,
-  EnabledProvider,
-  EnabledProviderWithModels,
-  UpdateAiProviderConfigParams,
-  UpdateAiProviderParams,
+  type CreateAiProviderParams,
+  type EnabledProvider,
+  type EnabledProviderWithModels,
+  type UpdateAiProviderConfigParams,
+  type UpdateAiProviderParams,
 } from '@/types/aiProvider';
 
-/**
- * Get models by provider ID and type, with proper formatting and deduplication
- */
-export const getModelListByType = async (
-  enabledAiModels: EnabledAiModel[],
-  providerId: string,
-  type: string,
-) => {
-  const filteredModels = enabledAiModels.filter(
-    (model) => model.providerId === providerId && model.type === type,
-  );
-
-  const models = await Promise.all(
-    filteredModels.map(async (model) => ({
-      abilities: (model.abilities || {}) as ModelAbilities,
-      contextWindowTokens: model.contextWindowTokens,
-      displayName: model.displayName ?? '',
-      id: model.id,
-      ...(model.type === 'image' && {
-        parameters:
-          (model as AIImageModelCard).parameters ||
-          (await getModelPropertyWithFallback(model.id, 'parameters')),
-      }),
-    })),
-  );
-
-  return uniqBy(models, 'id');
+export type ProviderModelListItem = {
+  abilities: ModelAbilities;
+  approximatePricePerImage?: number;
+  contextWindowTokens?: number;
+  description?: string;
+  displayName: string;
+  id: string;
+  parameters?: ModelParamsSchema;
+  pricePerImage?: number;
+  pricing?: Pricing;
+  releasedAt?: string;
 };
 
-/**
- * Build provider model lists with proper async handling
- */
+type ModelNormalizer = (model: EnabledAiModel) => Promise<ProviderModelListItem>;
+
+const dedupeById = (models: ProviderModelListItem[]) => uniqBy(models, 'id');
+
+const createProviderModelCollector = (
+  type: EnabledAiModel['type'],
+  normalizer: ModelNormalizer,
+) => {
+  return async (enabledAiModels: EnabledAiModel[], providerId: string) => {
+    const filteredModels = enabledAiModels.filter(
+      (model) => model.providerId === providerId && model.type === type,
+    );
+
+    if (!filteredModels.length) return [];
+
+    const normalized = await Promise.all(filteredModels.map((model) => normalizer(model)));
+    return dedupeById(normalized);
+  };
+};
+
+export const normalizeChatModel = (model: EnabledAiModel): ProviderModelListItem => ({
+  abilities: (model.abilities || {}) as ModelAbilities,
+  contextWindowTokens: model.contextWindowTokens,
+  displayName: model.displayName ?? '',
+  id: model.id,
+  releasedAt: model.releasedAt,
+});
+
+export const normalizeImageModel = async (
+  model: EnabledAiModel,
+): Promise<ProviderModelListItem> => {
+  const fallbackParametersPromise = model.parameters
+    ? Promise.resolve<ModelParamsSchema | undefined>(model.parameters)
+    : getModelPropertyWithFallback<ModelParamsSchema | undefined>(
+        model.id,
+        'parameters',
+        model.providerId,
+      );
+
+  const modelWithPricing = model as AIImageModelCard;
+  const fallbackPricingPromise = modelWithPricing.pricing
+    ? Promise.resolve<Pricing | undefined>(modelWithPricing.pricing)
+    : getModelPropertyWithFallback<Pricing | undefined>(model.id, 'pricing', model.providerId);
+
+  const fallbackDescriptionPromise = getModelPropertyWithFallback<string | undefined>(
+    model.id,
+    'description',
+    model.providerId,
+  );
+
+  const [fallbackParameters, fallbackPricing, fallbackDescription] = await Promise.all([
+    fallbackParametersPromise,
+    fallbackPricingPromise,
+    fallbackDescriptionPromise,
+  ]);
+
+  const parameters = model.parameters ?? fallbackParameters;
+  const pricing = fallbackPricing;
+  const description = fallbackDescription;
+  const { price, approximatePrice } = resolveImageSinglePrice(pricing);
+
+  return {
+    abilities: (model.abilities || {}) as ModelAbilities,
+    contextWindowTokens: model.contextWindowTokens,
+    displayName: model.displayName ?? '',
+    id: model.id,
+    releasedAt: model.releasedAt,
+    ...(parameters && { parameters }),
+    ...(description && { description }),
+    ...(pricing && { pricing }),
+    ...(typeof approximatePrice === 'number' && { approximatePricePerImage: approximatePrice }),
+    ...(typeof price === 'number' && { pricePerImage: price }),
+  };
+};
+
+export const getChatModelList = createProviderModelCollector('chat', async (model) =>
+  normalizeChatModel(model),
+);
+
+export const getImageModelList = createProviderModelCollector('image', normalizeImageModel);
+
 const buildProviderModelLists = async (
   providers: EnabledProvider[],
   enabledAiModels: EnabledAiModel[],
-  type: 'chat' | 'image',
+  collector: (
+    enabledAiModels: EnabledAiModel[],
+    providerId: string,
+  ) => Promise<ProviderModelListItem[]>,
 ) => {
   return Promise.all(
     providers.map(async (provider) => ({
       ...provider,
-      children: await getModelListByType(enabledAiModels, provider.id, type),
+      children: await collector(enabledAiModels, provider.id),
       name: provider.name || provider.id,
     })),
   );
 };
+
+/**
+ * Build image provider model lists with proper async handling
+ */
+const buildImageProviderModelLists = async (
+  providers: EnabledProvider[],
+  enabledAiModels: EnabledAiModel[],
+) => buildProviderModelLists(providers, enabledAiModels, getImageModelList);
+
+/**
+ * Build chat provider model lists with proper async handling
+ */
+const buildChatProviderModelLists = async (
+  providers: EnabledProvider[],
+  enabledAiModels: EnabledAiModel[],
+) => buildProviderModelLists(providers, enabledAiModels, getChatModelList);
 
 enum AiProviderSwrKey {
   fetchAiProviderItem = 'FETCH_AI_PROVIDER_ITEM',
@@ -111,6 +193,7 @@ export interface AiProviderAction {
    */
   useFetchAiProviderRuntimeState: (
     isLoginOnInit: boolean | undefined,
+    isSyncActive?: boolean,
   ) => SWRResponse<AiProviderRuntimeStateWithBuiltinModels | undefined>;
 }
 
@@ -176,6 +259,19 @@ export const createAiProviderSlice: StateCreator<
   toggleProviderEnabled: async (id: string, enabled: boolean) => {
     get().internal_toggleAiProviderLoading(id, true);
     await aiProviderService.toggleProviderEnabled(id, enabled);
+
+    // Immediately update local aiProviderList to reflect the change
+    // This ensures the switch displays correctly without waiting for SWR refresh
+    set(
+      (state) => ({
+        aiProviderList: state.aiProviderList.map((item) =>
+          item.id === id ? { ...item, enabled } : item,
+        ),
+      }),
+      false,
+      'toggleProviderEnabled/syncEnabled',
+    );
+
     await get().refreshAiProviderList();
 
     get().internal_toggleAiProviderLoading(id, false);
@@ -193,6 +289,61 @@ export const createAiProviderSlice: StateCreator<
   updateAiProviderConfig: async (id, value) => {
     get().internal_toggleAiProviderConfigUpdating(id, true);
     await aiProviderService.updateAiProviderConfig(id, value);
+
+    // Immediately update local state for instant UI feedback
+    set(
+      (state) => {
+        const currentRuntimeConfig = state.aiProviderRuntimeConfig[id];
+        const currentDetailConfig = state.aiProviderDetailMap[id];
+
+        const updates: Partial<typeof currentRuntimeConfig> = {};
+        const detailUpdates: Partial<typeof currentDetailConfig> = {};
+
+        // Update fetchOnClient if changed
+        if (typeof value.fetchOnClient !== 'undefined') {
+          // Convert null to undefined to match the interface definition
+          const fetchOnClientValue = value.fetchOnClient === null ? undefined : value.fetchOnClient;
+          updates.fetchOnClient = fetchOnClientValue;
+          detailUpdates.fetchOnClient = fetchOnClientValue;
+        }
+
+        // Update config.enableResponseApi if changed
+        if (value.config?.enableResponseApi !== undefined && currentRuntimeConfig?.config) {
+          updates.config = {
+            ...currentRuntimeConfig.config,
+            enableResponseApi: value.config.enableResponseApi,
+          };
+        }
+
+        return {
+          // Update detail map for form display
+          aiProviderDetailMap:
+            currentDetailConfig && Object.keys(detailUpdates).length > 0
+              ? {
+                  ...state.aiProviderDetailMap,
+                  [id]: {
+                    ...currentDetailConfig,
+                    ...detailUpdates,
+                  },
+                }
+              : state.aiProviderDetailMap,
+          // Update runtime config for selectors
+          aiProviderRuntimeConfig:
+            currentRuntimeConfig && Object.keys(updates).length > 0
+              ? {
+                  ...state.aiProviderRuntimeConfig,
+                  [id]: {
+                    ...currentRuntimeConfig,
+                    ...updates,
+                  },
+                }
+              : state.aiProviderRuntimeConfig,
+        };
+      },
+      false,
+      'updateAiProviderConfig/syncChanges',
+    );
+
     await get().refreshAiProviderDetail();
 
     get().internal_toggleAiProviderConfigUpdating(id, false);
@@ -210,7 +361,14 @@ export const createAiProviderSlice: StateCreator<
         onSuccess: (data) => {
           if (!data) return;
 
-          set({ activeAiProvider: id, aiProviderDetail: data }, false, 'useFetchAiProviderItem');
+          set(
+            (state) => ({
+              activeAiProvider: id,
+              aiProviderDetailMap: { ...state.aiProviderDetailMap, [id]: data },
+            }),
+            false,
+            'useFetchAiProviderItem',
+          );
         },
       },
     ),
@@ -236,24 +394,23 @@ export const createAiProviderSlice: StateCreator<
     ),
 
   useFetchAiProviderRuntimeState: (isLogin) => {
-    const isAuthLoaded = authSelectors.isLoaded(useUserStore.getState());
+    const isAuthLoaded = useUserStore(authSelectors.isLoaded);
     // Only fetch when auth is loaded and login status is explicitly defined (true or false)
     // Prevents unnecessary requests when login state is null/undefined
-    const shouldFetch =
-      isAuthLoaded && !isDeprecatedEdition && isLogin !== null && isLogin !== undefined;
+    const shouldFetch = isAuthLoaded && isLogin !== null && isLogin !== undefined;
+
     return useClientDataSWR<AiProviderRuntimeStateWithBuiltinModels | undefined>(
       shouldFetch ? [AiProviderSwrKey.fetchAiProviderRuntimeState, isLogin] : null,
       async ([, isLogin]) => {
         const [{ LOBE_DEFAULT_MODEL_LIST: builtinAiModelList }, { DEFAULT_MODEL_PROVIDER_LIST }] =
-          await Promise.all([import('model-bank'), import('@/config/modelProviders')]);
+          await Promise.all([import('model-bank'), import('model-bank/modelProviders')]);
 
         if (isLogin) {
           const data = await aiProviderService.getAiProviderRuntimeState();
-
           // Build model lists with proper async handling
           const [enabledChatModelList, enabledImageModelList] = await Promise.all([
-            buildProviderModelLists(data.enabledChatAiProviders, data.enabledAiModels, 'chat'),
-            buildProviderModelLists(data.enabledImageAiProviders, data.enabledAiModels, 'image'),
+            buildChatProviderModelLists(data.enabledChatAiProviders, data.enabledAiModels),
+            buildImageProviderModelLists(data.enabledImageAiProviders, data.enabledAiModels),
           ]);
 
           return {
@@ -285,8 +442,8 @@ export const createAiProviderSlice: StateCreator<
         // Build model lists for non-login state as well
         const enabledAiModels = builtinAiModelList.filter((m) => m.enabled);
         const [enabledChatModelList, enabledImageModelList] = await Promise.all([
-          buildProviderModelLists(enabledChatAiProviders, enabledAiModels, 'chat'),
-          buildProviderModelLists(enabledImageAiProviders, enabledAiModels, 'image'),
+          buildChatProviderModelLists(enabledChatAiProviders, enabledAiModels),
+          buildImageProviderModelLists(enabledImageAiProviders, enabledAiModels),
         ]);
 
         return {
@@ -301,7 +458,6 @@ export const createAiProviderSlice: StateCreator<
         };
       },
       {
-        focusThrottleInterval: isDesktop || isUsePgliteDB ? 100 : undefined,
         onSuccess: (data) => {
           if (!data) return;
 

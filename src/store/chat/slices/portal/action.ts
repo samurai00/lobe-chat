@@ -1,21 +1,40 @@
-import { StateCreator } from 'zustand/vanilla';
+import { type StateCreator } from 'zustand/vanilla';
 
-import { ChatStore } from '@/store/chat/store';
-import { PortalArtifact } from '@/types/artifact';
+import { type ChatStore } from '@/store/chat/store';
+import { type PortalArtifact } from '@/types/artifact';
 
-import { PortalFile } from './initialState';
+import { type PortalFile, type PortalViewData, PortalViewType } from './initialState';
 
 export interface ChatPortalAction {
+  // ============== Core Stack Operations ==============
+  clearPortalStack: () => void;
+  // ============== Convenience Methods ==============
   closeArtifact: () => void;
+  closeDocument: () => void;
   closeFilePreview: () => void;
   closeMessageDetail: () => void;
+  closeNotebook: () => void;
+
   closeToolUI: () => void;
+  goBack: () => void;
+  goHome: () => void;
   openArtifact: (artifact: PortalArtifact) => void;
-  openFilePreview: (portal: PortalFile) => void;
+  openDocument: (documentId: string) => void;
+  openFilePreview: (file: PortalFile) => void;
   openMessageDetail: (messageId: string) => void;
+  openNotebook: () => void;
   openToolUI: (messageId: string, identifier: string) => void;
-  togglePortal: (open?: boolean) => void;
+  popPortalView: () => void;
+  pushPortalView: (view: PortalViewData) => void;
+  replacePortalView: (view: PortalViewData) => void;
+  toggleNotebook: (open?: boolean) => void;
 }
+
+// Helper to get current view type from stack
+const getCurrentViewType = (portalStack: PortalViewData[]): PortalViewType | null => {
+  const top = portalStack.at(-1);
+  return top?.type ?? null;
+};
 
 export const chatPortalSlice: StateCreator<
   ChatStore,
@@ -23,45 +42,156 @@ export const chatPortalSlice: StateCreator<
   [],
   ChatPortalAction
 > = (set, get) => ({
+  clearPortalStack: () => {
+    set({ portalStack: [], showPortal: false }, false, 'clearPortalStack');
+  },
+
   closeArtifact: () => {
-    get().togglePortal(false);
-    set({ portalArtifact: undefined }, false, 'closeArtifact');
+    const { portalStack } = get();
+    if (getCurrentViewType(portalStack) === PortalViewType.Artifact) {
+      get().popPortalView();
+    }
   },
+
+  closeDocument: () => {
+    const { portalStack } = get();
+    if (getCurrentViewType(portalStack) === PortalViewType.Document) {
+      get().popPortalView();
+    }
+  },
+
   closeFilePreview: () => {
-    set({ portalFile: undefined }, false, 'closeFilePreview');
+    const { portalStack } = get();
+    if (getCurrentViewType(portalStack) === PortalViewType.FilePreview) {
+      get().popPortalView();
+    }
   },
+
   closeMessageDetail: () => {
-    set({ portalMessageDetail: undefined }, false, 'openMessageDetail');
+    const { portalStack } = get();
+    if (getCurrentViewType(portalStack) === PortalViewType.MessageDetail) {
+      get().popPortalView();
+    }
   },
+
+  closeNotebook: () => {
+    const { portalStack } = get();
+    if (getCurrentViewType(portalStack) === PortalViewType.Notebook) {
+      get().popPortalView();
+    }
+  },
+
   closeToolUI: () => {
-    set({ portalToolMessage: undefined }, false, 'closeToolUI');
+    const { portalStack } = get();
+    if (getCurrentViewType(portalStack) === PortalViewType.ToolUI) {
+      get().popPortalView();
+    }
   },
+
+  goBack: () => {
+    get().popPortalView();
+  },
+
+  goHome: () => {
+    set(
+      {
+        portalStack: [{ type: PortalViewType.Home }],
+        showPortal: true,
+      },
+      false,
+      'goHome',
+    );
+  },
+
+  // ============== Convenience Methods (using stack operations) ==============
   openArtifact: (artifact) => {
-    get().togglePortal(true);
-
-    set({ portalArtifact: artifact }, false, 'openArtifact');
+    get().pushPortalView({ artifact, type: PortalViewType.Artifact });
   },
-  openFilePreview: (portal) => {
-    get().togglePortal(true);
 
-    set({ portalFile: portal }, false, 'openFilePreview');
+  openDocument: (documentId) => {
+    get().pushPortalView({ documentId, type: PortalViewType.Document });
   },
+
+  openFilePreview: (file) => {
+    get().pushPortalView({ file, type: PortalViewType.FilePreview });
+  },
+
   openMessageDetail: (messageId) => {
-    get().togglePortal(true);
-
-    set({ portalMessageDetail: messageId }, false, 'openMessageDetail');
+    get().pushPortalView({ messageId, type: PortalViewType.MessageDetail });
   },
 
-  openToolUI: (id, identifier) => {
-    get().togglePortal(true);
+  openNotebook: () => {
+    get().pushPortalView({ type: PortalViewType.Notebook });
+  },
 
-    set({ portalToolMessage: { id, identifier } }, false, 'openToolUI');
+  openToolUI: (messageId, identifier) => {
+    get().pushPortalView({ identifier, messageId, type: PortalViewType.ToolUI });
   },
-  togglePortal: (open) => {
-    const showInspector = open === undefined ? !get().showPortal : open;
-    set({ showPortal: showInspector }, false, 'toggleInspector');
+
+  popPortalView: () => {
+    const { portalStack } = get();
+
+    if (portalStack.length <= 1) {
+      // Stack empty or only one item, clear stack and close portal
+      set({ portalStack: [], showPortal: false }, false, 'popPortalView/close');
+    } else {
+      set({ portalStack: portalStack.slice(0, -1) }, false, 'popPortalView');
+    }
   },
-  // updateArtifactContent: (content) => {
-  //   set({ portalArtifact: content }, false, 'updateArtifactContent');
-  // },
+
+  // ============== Core Stack Operations ==============
+  pushPortalView: (view) => {
+    const { portalStack } = get();
+    const top = portalStack.at(-1);
+
+    // If top of stack is same type, replace instead of push (avoid duplicates)
+    if (top?.type === view.type) {
+      set(
+        {
+          portalStack: [...portalStack.slice(0, -1), view],
+          showPortal: true,
+        },
+        false,
+        'pushPortalView/replace',
+      );
+    } else {
+      set(
+        {
+          portalStack: [...portalStack, view],
+          showPortal: true,
+        },
+        false,
+        'pushPortalView',
+      );
+    }
+  },
+
+  replacePortalView: (view) => {
+    const { portalStack } = get();
+
+    if (portalStack.length === 0) {
+      set({ portalStack: [view], showPortal: true }, false, 'replacePortalView/push');
+    } else {
+      set(
+        {
+          portalStack: [...portalStack.slice(0, -1), view],
+          showPortal: true,
+        },
+        false,
+        'replacePortalView',
+      );
+    }
+  },
+
+  toggleNotebook: (open) => {
+    const { portalStack } = get();
+    const isCurrentlyNotebook = getCurrentViewType(portalStack) === PortalViewType.Notebook;
+    const shouldOpen = open ?? !isCurrentlyNotebook;
+
+    if (shouldOpen) {
+      get().openNotebook();
+    } else {
+      get().closeNotebook();
+    }
+  },
 });

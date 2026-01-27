@@ -45,7 +45,6 @@ describe('MessageContentProcessor', () => {
           imageList: [{ url: 'image_url', alt: '', id: 'test' } as ChatImageItem],
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          meta: {},
         },
       ];
 
@@ -75,7 +74,6 @@ describe('MessageContentProcessor', () => {
           ],
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          meta: {},
         },
       ];
 
@@ -108,7 +106,6 @@ describe('MessageContentProcessor', () => {
           imageList: [{ url: 'image_url', alt: '', id: 'test' } as ChatImageItem],
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          meta: {},
         },
       ];
 
@@ -139,7 +136,6 @@ describe('MessageContentProcessor', () => {
           ],
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          meta: {},
         },
       ];
 
@@ -171,7 +167,6 @@ describe('MessageContentProcessor', () => {
           ],
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          meta: {},
         },
       ];
 
@@ -204,7 +199,6 @@ describe('MessageContentProcessor', () => {
           ],
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          meta: {},
         },
       ];
 
@@ -245,7 +239,6 @@ describe('MessageContentProcessor', () => {
           ],
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          meta: {},
         },
       ];
 
@@ -286,7 +279,6 @@ describe('MessageContentProcessor', () => {
           ],
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          meta: {},
         },
       ];
 
@@ -317,7 +309,6 @@ describe('MessageContentProcessor', () => {
           },
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          meta: {},
         },
       ];
 
@@ -366,7 +357,6 @@ describe('MessageContentProcessor', () => {
           ],
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          meta: {},
         },
         {
           id: 'test2',
@@ -378,7 +368,6 @@ describe('MessageContentProcessor', () => {
           },
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          meta: {},
         },
       ];
 
@@ -409,7 +398,6 @@ describe('MessageContentProcessor', () => {
           videoList: [{ url: 'video_url', alt: 'test video', id: 'test' } as ChatVideoItem],
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          meta: {},
         },
       ];
 
@@ -440,7 +428,6 @@ describe('MessageContentProcessor', () => {
           ] as ChatVideoItem[],
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          meta: {},
         },
       ];
 
@@ -476,7 +463,6 @@ describe('MessageContentProcessor', () => {
           ] as ChatVideoItem[],
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          meta: {},
         },
       ];
 
@@ -510,7 +496,6 @@ describe('MessageContentProcessor', () => {
           ] as ChatVideoItem[],
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          meta: {},
         },
       ];
 
@@ -550,7 +535,6 @@ describe('MessageContentProcessor', () => {
           ] as ChatVideoItem[],
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          meta: {},
         },
       ];
 
@@ -564,6 +548,243 @@ describe('MessageContentProcessor', () => {
       expect(content[1].image_url.url).toBe('http://example.com/image.jpg');
       expect(content[2].type).toBe('video_url');
       expect(content[2].video_url.url).toBe('http://example.com/video.mp4');
+    });
+  });
+
+  describe('Multimodal message content processing', () => {
+    it('should convert assistant message with metadata.isMultimodal to OpenAI format', async () => {
+      const processor = new MessageContentProcessor({
+        model: 'gpt-4',
+        provider: 'openai',
+        isCanUseVision: mockIsCanUseVision,
+        fileContext: { enabled: false },
+      });
+
+      const messages: UIChatMessage[] = [
+        {
+          id: 'test',
+          role: 'assistant',
+          content: JSON.stringify([
+            { type: 'text', text: 'Here is an image:' },
+            { type: 'image', image: 'https://s3.example.com/image.png' },
+            { type: 'text', text: 'What do you think?' },
+          ]),
+          metadata: {
+            isMultimodal: true,
+          },
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      ];
+
+      const result = await processor.process(createContext(messages));
+
+      expect(result.messages[0]).toMatchObject({
+        content: [
+          { type: 'text', text: 'Here is an image:' },
+          {
+            type: 'image_url',
+            image_url: { detail: 'auto', url: 'https://s3.example.com/image.png' },
+          },
+          { type: 'text', text: 'What do you think?' },
+        ],
+      });
+    });
+
+    it('should convert assistant message with reasoning.isMultimodal to plain text', async () => {
+      const processor = new MessageContentProcessor({
+        model: 'gpt-4',
+        provider: 'openai',
+        isCanUseVision: mockIsCanUseVision,
+        fileContext: { enabled: false },
+      });
+
+      const messages: UIChatMessage[] = [
+        {
+          id: 'test',
+          role: 'assistant',
+          content: 'The answer is correct.',
+          reasoning: {
+            content: JSON.stringify([
+              { type: 'text', text: 'Let me analyze this image:' },
+              { type: 'image', image: 'https://s3.example.com/reasoning-image.png' },
+              { type: 'text', text: 'Based on the analysis...' },
+            ]),
+            isMultimodal: true,
+          },
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      ];
+
+      const result = await processor.process(createContext(messages));
+
+      expect(result.messages[0]).toMatchObject({
+        reasoning: {
+          content:
+            'Let me analyze this image:\n[Image: https://s3.example.com/reasoning-image.png]\nBased on the analysis...',
+          isMultimodal: false,
+        },
+        content: 'The answer is correct.',
+      });
+    });
+
+    it('should handle both reasoning.isMultimodal and metadata.isMultimodal', async () => {
+      const processor = new MessageContentProcessor({
+        model: 'gpt-4',
+        provider: 'openai',
+        isCanUseVision: mockIsCanUseVision,
+        fileContext: { enabled: false },
+      });
+
+      const messages: UIChatMessage[] = [
+        {
+          id: 'test',
+          role: 'assistant',
+          content: JSON.stringify([
+            { type: 'text', text: 'Final result:' },
+            { type: 'image', image: 'https://s3.example.com/result.png' },
+          ]),
+          metadata: {
+            isMultimodal: true,
+          },
+          reasoning: {
+            content: JSON.stringify([
+              { type: 'text', text: 'Thinking about:' },
+              { type: 'image', image: 'https://s3.example.com/thinking.png' },
+            ]),
+            isMultimodal: true,
+          },
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      ];
+
+      const result = await processor.process(createContext(messages));
+
+      expect(result.messages[0]).toMatchObject({
+        reasoning: {
+          content: 'Thinking about:\n[Image: https://s3.example.com/thinking.png]',
+          isMultimodal: false,
+        },
+        content: [
+          { type: 'text', text: 'Final result:' },
+          {
+            type: 'image_url',
+            image_url: { detail: 'auto', url: 'https://s3.example.com/result.png' },
+          },
+        ],
+      });
+    });
+
+    it('should prioritize reasoning.signature over reasoning.isMultimodal', async () => {
+      const processor = new MessageContentProcessor({
+        model: 'gpt-4',
+        provider: 'openai',
+        isCanUseVision: mockIsCanUseVision,
+        fileContext: { enabled: false },
+      });
+
+      const messages: UIChatMessage[] = [
+        {
+          id: 'test',
+          role: 'assistant',
+          content: 'The answer.',
+          reasoning: {
+            content: 'Some thinking process',
+            signature: 'sig123',
+            // Even if isMultimodal is true, signature takes priority
+            isMultimodal: true,
+          },
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      ];
+
+      const result = await processor.process(createContext(messages));
+
+      expect(result.messages[0]).toMatchObject({
+        content: [
+          {
+            type: 'thinking',
+            thinking: 'Some thinking process',
+            signature: 'sig123',
+          },
+          { type: 'text', text: 'The answer.' },
+        ],
+      });
+    });
+
+    it('should handle plain text when isMultimodal is true but content is not valid JSON', async () => {
+      const processor = new MessageContentProcessor({
+        model: 'gpt-4',
+        provider: 'openai',
+        isCanUseVision: mockIsCanUseVision,
+        fileContext: { enabled: false },
+      });
+
+      const messages: UIChatMessage[] = [
+        {
+          id: 'test',
+          role: 'assistant',
+          content: 'This is plain text, not JSON',
+          metadata: {
+            isMultimodal: true,
+          },
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      ];
+
+      const result = await processor.process(createContext(messages));
+
+      expect(result.messages[0]).toMatchObject({
+        content: 'This is plain text, not JSON',
+      });
+    });
+
+    it('should preserve thoughtSignature in multimodal content parts', async () => {
+      const processor = new MessageContentProcessor({
+        model: 'gpt-4',
+        provider: 'openai',
+        isCanUseVision: mockIsCanUseVision,
+        fileContext: { enabled: false },
+      });
+
+      const messages: UIChatMessage[] = [
+        {
+          id: 'test',
+          role: 'assistant',
+          content: JSON.stringify([
+            { type: 'text', text: 'Analysis result:', thoughtSignature: 'sig-001' },
+            {
+              type: 'image',
+              image: 'https://s3.example.com/chart.png',
+              thoughtSignature: 'sig-002',
+            },
+            { type: 'text', text: 'Conclusion' },
+          ]),
+          metadata: {
+            isMultimodal: true,
+          },
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      ];
+
+      const result = await processor.process(createContext(messages));
+
+      expect(result.messages[0]).toMatchObject({
+        content: [
+          { type: 'text', text: 'Analysis result:', googleThoughtSignature: 'sig-001' },
+          {
+            type: 'image_url',
+            image_url: { detail: 'auto', url: 'https://s3.example.com/chart.png' },
+            googleThoughtSignature: 'sig-002',
+          },
+          { type: 'text', text: 'Conclusion' },
+        ],
+      });
     });
   });
 });

@@ -1,6 +1,7 @@
-import { UIChatMessage } from '@lobechat/types';
+import { type UIChatMessage } from '@lobechat/types';
 
 import { DEFAULT_AGENT_CHAT_CONFIG, DEFAULT_AGENT_CONFIG } from '@/const/settings';
+import type { ResolvedAgentConfig } from '@/services/chat/mecha';
 
 // Test Constants
 export const TEST_IDS = {
@@ -57,11 +58,22 @@ export const createMockChatConfig = (overrides = {}) => ({
 
 // Mock Store State Factory
 export const createMockStoreState = (overrides = {}) => ({
-  activeId: TEST_IDS.SESSION_ID,
+  activeAgentId: TEST_IDS.SESSION_ID,
   activeTopicId: TEST_IDS.TOPIC_ID,
-  chatLoadingIds: [],
-  chatLoadingIdsAbortController: undefined,
   messagesMap: {},
   toolCallingStreamIds: {},
+  ...overrides,
+});
+
+/**
+ * Create a mock ResolvedAgentConfig for testing
+ */
+export const createMockResolvedAgentConfig = (
+  overrides: Partial<ResolvedAgentConfig> = {},
+): ResolvedAgentConfig => ({
+  agentConfig: createMockAgentConfig(),
+  chatConfig: createMockChatConfig(),
+  isBuiltinAgent: false,
+  plugins: [],
   ...overrides,
 });

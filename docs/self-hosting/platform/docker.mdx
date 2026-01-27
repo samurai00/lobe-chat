@@ -1,11 +1,11 @@
 ---
-title: Deploy LobeChat with Docker
+title: Deploy LobeHub with Docker
 description: >-
-  Learn how to deploy the LobeChat service using Docker, including installation steps, command deployment, proxy configuration, and automatic update scripts.
-
+  Learn how to deploy the LobeHub service using Docker, including installation
+  steps, command deployment, proxy configuration, and automatic update scripts.
 tags:
   - Docker Deployment
-  - LobeChat Service
+  - LobeHub Service
   - Docker Command
   - Proxy Configuration
   - Automatic Update Script
@@ -21,7 +21,7 @@ tags:
   [![][docker-pulls-shield]][docker-pulls-link]
 </div>
 
-We provide a [Docker image][docker-release-link] for you to deploy the LobeChat service on your private device.
+We provide a [Docker image][docker-release-link] for you to deploy the LobeHub service on your private device.
 
 <Steps>
   ### Install Docker Container Environment
@@ -44,12 +44,11 @@ We provide a [Docker image][docker-release-link] for you to deploy the LobeChat 
 
   ### Docker Command Deployment
 
-  Use the following command to start the LobeChat service with one click:
+  Use the following command to start the LobeHub service with one click:
 
   ```fish
   $ docker run -d -p 3210:3210 \
     -e OPENAI_API_KEY=sk-xxxx \
-    -e ACCESS_CODE=lobe66 \
     --name lobe-chat \
     lobehub/lobe-chat
   ```
@@ -60,17 +59,11 @@ We provide a [Docker image][docker-release-link] for you to deploy the LobeChat 
 
   - Replace `sk-xxxx` in the above command with your OpenAI API Key.
 
-  - For the complete list of environment variables supported by LobeChat, please refer to the [Environment Variables](/docs/self-hosting/environment-variables) section.
+  - For the complete list of environment variables supported by LobeHub, please refer to the [Environment Variables](/docs/self-hosting/environment-variables) section.
 
   <Callout type="tip">
     Since the official Docker image build takes about half an hour, if you see the "update available"
     prompt after deployment, you can wait for the image to finish building before deploying again.
-  </Callout>
-
-  <Callout type="warning">
-    The official Docker image does not have a password set. It is strongly recommended to add a
-    password to enhance security, otherwise you may encounter situations like [My API Key was
-    stolen!!!](https://github.com/lobehub/lobe-chat/issues/1123).
   </Callout>
 
   <Callout type="important">
@@ -87,7 +80,6 @@ We provide a [Docker image][docker-release-link] for you to deploy the LobeChat 
   $ docker run -d -p 3210:3210 \
     -e OPENAI_API_KEY=sk-xxxx \
     -e OPENAI_PROXY_URL=https://api-proxy.com/v1 \
-    -e ACCESS_CODE=lobe66 \
     --name lobe-chat \
     lobehub/lobe-chat
   ```
@@ -101,7 +93,6 @@ We provide a [Docker image][docker-release-link] for you to deploy the LobeChat 
   ```env
   OPENAI_API_KEY=sk-xxxx
   OPENAI_PROXY_URL=https://api-proxy.com/v1
-  ACCESS_CODE=arthals2333
   OPENAI_MODEL_LIST=-gpt-4,-gpt-4-32k,-gpt-3.5-turbo-16k,gpt-3.5-turbo-1106=gpt-3.5-turbo-16k,gpt-4-0125-preview=gpt-4-turbo,gpt-4-vision-preview=gpt-4-vision
   ```
 

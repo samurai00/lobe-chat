@@ -1,25 +1,28 @@
-import { crawlResultsPrompt, searchResultsPrompt } from '@lobechat/prompts';
-import { SearchContent, SearchQuery, UniformSearchResponse } from '@lobechat/types';
+import { WebBrowsingApiName, WebBrowsingManifest } from '@lobechat/builtin-tool-web-browsing';
+import { SearchQuery } from '@lobechat/types';
 import { UIChatMessage } from '@lobechat/types';
 import { act, renderHook } from '@testing-library/react';
 import { Mock, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { searchService } from '@/services/search';
+// Import after mocks
 import { useChatStore } from '@/store/chat';
-import { chatSelectors } from '@/store/chat/selectors';
-import { CRAWL_CONTENT_LIMITED_COUNT } from '@/tools/web-browsing/const';
+import { dbMessageSelectors } from '@/store/chat/selectors';
 
-// Mock services
-vi.mock('@/services/search', () => ({
-  searchService: {
-    webSearch: vi.fn(),
-    crawlPages: vi.fn(),
+// Mock the tools module to avoid importing the problematic dependencies
+vi.mock('@lobechat/builtin-tool-web-browsing', () => ({
+  WebBrowsingApiName: {
+    search: 'search',
+    crawlSinglePage: 'crawlSinglePage',
+    crawlMultiPages: 'crawlMultiPages',
+  },
+  WebBrowsingManifest: {
+    identifier: 'lobe-web-browsing',
   },
 }));
 
 vi.mock('@/store/chat/selectors', () => ({
-  chatSelectors: {
-    getMessageById: vi.fn(),
+  dbMessageSelectors: {
+    getDbMessageById: vi.fn(),
   },
 }));
 
@@ -27,229 +30,157 @@ describe('search actions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useChatStore.setState({
-      activeId: 'session-id',
+      activeAgentId: 'session-id',
       activeTopicId: 'topic-id',
-      searchLoading: {},
-      internal_updateMessageContent: vi.fn(),
-      internal_updateMessagePluginError: vi.fn(),
-      updatePluginArguments: vi.fn(),
-      updatePluginState: vi.fn(),
-      internal_createMessage: vi.fn(),
-      internal_addToolToAssistantMessage: vi.fn(),
+      messageOperationMap: {},
+      optimisticUpdateMessageContent: vi.fn(),
+      optimisticUpdateMessagePluginError: vi.fn(),
+      optimisticUpdatePluginArguments: vi.fn(),
+      optimisticUpdatePluginState: vi.fn(),
+      optimisticCreateMessage: vi.fn(),
+      optimisticAddToolToAssistantMessage: vi.fn(),
       openToolUI: vi.fn(),
+      invokeBuiltinTool: vi.fn(),
     });
+
+    // Default mock for dbMessageSelectors - returns undefined to use activeAgentId/activeTopicId
+    vi.spyOn(dbMessageSelectors, 'getDbMessageById').mockImplementation(() => () => undefined);
   });
 
-  describe('search', () => {
-    it('should handle successful search', async () => {
-      const mockResponse: UniformSearchResponse = {
-        results: [
-          {
-            title: 'Test Result',
-            content: 'Test Content',
-            url: 'https://test.com',
-            category: 'general',
-            engines: ['google'],
-            parsedUrl: 'test.com',
-            score: 1,
-          },
-        ],
-        costTime: 1,
-        resultNumbers: 1,
-        query: 'test',
+  describe('triggerSearchAgain', () => {
+    it('should update arguments and call invokeBuiltinTool', async () => {
+      const messageId = 'test-message-id';
+      const operationId = 'op_test';
+      const toolCallId = 'tool_call_123';
+
+      // Mock message with tool_call_id
+      const mockMessage: Partial<UIChatMessage> = {
+        id: messageId,
+        tool_call_id: toolCallId,
+        role: 'tool',
+        content: '',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
       };
 
-      (searchService.webSearch as Mock).mockResolvedValue(mockResponse);
+      vi.spyOn(dbMessageSelectors, 'getDbMessageById').mockImplementation(
+        () => () => mockMessage as UIChatMessage,
+      );
 
       const { result } = renderHook(() => useChatStore());
-      const { search } = result.current;
 
-      const messageId = 'test-message-id';
-      const query: SearchQuery = {
-        searchEngines: ['google'],
-        query: 'test query',
-      };
-
-      await act(async () => {
-        await search(messageId, query);
-      });
-
-      const expectedContent: SearchContent[] = [
-        {
-          title: 'Test Result',
-          url: 'https://test.com',
-          content: 'Test Content',
+      // Set up messageOperationMap so triggerSearchAgain can get operationId
+      useChatStore.setState({
+        messageOperationMap: {
+          [messageId]: operationId,
         },
-      ];
-
-      expect(searchService.webSearch).toHaveBeenCalledWith({
-        searchEngines: ['google'],
-        query: 'test query',
-      });
-      expect(result.current.searchLoading[messageId]).toBe(false);
-      expect(result.current.internal_updateMessageContent).toHaveBeenCalledWith(
-        messageId,
-        searchResultsPrompt(expectedContent),
-      );
-    });
-
-    it('should handle empty search results', async () => {
-      const emptyResponse: UniformSearchResponse = {
-        results: [],
-        costTime: 1,
-        resultNumbers: 0,
-        query: 'test',
-      };
-
-      (searchService.webSearch as Mock).mockResolvedValue(emptyResponse);
-
-      const { result } = renderHook(() => useChatStore());
-      const { search } = result.current;
-
-      const messageId = 'test-message-id';
-      const query: SearchQuery = {
-        searchEngines: ['custom-engine'],
-        searchTimeRange: 'year',
-        query: 'test query',
-      };
-
-      await act(async () => {
-        await search(messageId, query);
       });
 
-      expect(searchService.webSearch).toHaveBeenCalledWith({
-        searchEngines: ['custom-engine'],
-        searchTimeRange: 'year',
-        query: 'test query',
-      });
-      expect(result.current.searchLoading[messageId]).toBe(false);
-      expect(result.current.internal_updateMessageContent).toHaveBeenCalledWith(
-        messageId,
-        searchResultsPrompt([]),
-      );
-    });
-
-    it('should handle search error', async () => {
-      const error = new Error('Search failed');
-      (searchService.webSearch as Mock).mockRejectedValue(error);
-
-      const { result } = renderHook(() => useChatStore());
-      const { search } = result.current;
-
-      const messageId = 'test-message-id';
       const query: SearchQuery = {
         query: 'test query',
       };
 
       await act(async () => {
-        await search(messageId, query);
+        await result.current.triggerSearchAgain(messageId, query);
       });
 
-      expect(result.current.internal_updateMessagePluginError).toHaveBeenCalledWith(messageId, {
-        body: error,
-        message: 'Search failed',
-        type: 'PluginServerError',
-      });
-      expect(result.current.searchLoading[messageId]).toBe(false);
-      expect(result.current.internal_updateMessageContent).toHaveBeenCalledWith(
+      // Should update plugin arguments first
+      expect(result.current.optimisticUpdatePluginArguments).toHaveBeenCalledWith(
         messageId,
-        'Search failed',
+        query,
+        false,
+        { operationId },
       );
-    });
-  });
 
-  describe('crawlMultiPages', () => {
-    it('should truncate content that exceeds limit', async () => {
-      const longContent = 'a'.repeat(CRAWL_CONTENT_LIMITED_COUNT + 1000);
-      const mockResponse = {
-        results: [
-          {
-            data: {
-              content: longContent,
-              title: 'Test Page',
-            },
-            crawler: 'naive',
-            originalUrl: 'https://test.com',
-          },
-        ],
+      // Should call invokeBuiltinTool with correct payload
+      expect(result.current.invokeBuiltinTool).toHaveBeenCalledWith(messageId, {
+        apiName: WebBrowsingApiName.search,
+        arguments: JSON.stringify(query),
+        id: toolCallId,
+        identifier: WebBrowsingManifest.identifier,
+        type: 'builtin',
+      });
+    });
+
+    it('should work without operationId', async () => {
+      const messageId = 'test-message-id-2';
+      const toolCallId = 'tool_call_456';
+
+      // Mock message with tool_call_id
+      const mockMessage: Partial<UIChatMessage> = {
+        id: messageId,
+        tool_call_id: toolCallId,
+        role: 'tool',
+        content: '',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
       };
 
-      (searchService.crawlPages as Mock).mockResolvedValue(mockResponse);
+      vi.spyOn(dbMessageSelectors, 'getDbMessageById').mockImplementation(
+        () => () => mockMessage as UIChatMessage,
+      );
 
       const { result } = renderHook(() => useChatStore());
-      const messageId = 'test-message-id';
 
-      await act(async () => {
-        await result.current.crawlMultiPages(messageId, { urls: ['https://test.com'] });
+      // Ensure no operationId is set for this message
+      useChatStore.setState({
+        messageOperationMap: {},
       });
 
-      const expectedContent = [
-        {
-          content: longContent.slice(0, CRAWL_CONTENT_LIMITED_COUNT),
-          title: 'Test Page',
-        },
-      ];
-
-      expect(result.current.internal_updateMessageContent).toHaveBeenCalledWith(
-        messageId,
-        crawlResultsPrompt(expectedContent as any),
-      );
-    });
-
-    it('should handle crawl errors', async () => {
-      const mockResponse = {
-        results: [
-          {
-            errorMessage: 'Failed to crawl',
-            errorType: 'CRAWL_ERROR',
-            originalUrl: 'https://test.com',
-          },
-        ],
-      };
-
-      (searchService.crawlPages as Mock).mockResolvedValue(mockResponse);
-
-      const { result } = renderHook(() => useChatStore());
-      const messageId = 'test-message-id';
-
-      await act(async () => {
-        await result.current.crawlMultiPages(messageId, { urls: ['https://test.com'] });
-      });
-
-      expect(result.current.internal_updateMessageContent).toHaveBeenCalledWith(
-        messageId,
-        crawlResultsPrompt(mockResponse.results),
-      );
-    });
-  });
-
-  describe('reSearchWithSearXNG', () => {
-    it('should update arguments and perform search', async () => {
-      const { result } = renderHook(() => useChatStore());
-      const spy = vi.spyOn(result.current, 'search');
-      const { triggerSearchAgain } = result.current;
-
-      const messageId = 'test-message-id';
       const query: SearchQuery = {
         query: 'test query',
       };
 
       await act(async () => {
-        await triggerSearchAgain(messageId, query, { aiSummary: true });
+        await result.current.triggerSearchAgain(messageId, query);
       });
 
-      expect(result.current.updatePluginArguments).toHaveBeenCalledWith(messageId, query);
-      expect(spy).toHaveBeenCalledWith(messageId, query, true);
+      // Should update plugin arguments with undefined context
+      expect(result.current.optimisticUpdatePluginArguments).toHaveBeenCalledWith(
+        messageId,
+        query,
+        false,
+        undefined,
+      );
+
+      // Should still call invokeBuiltinTool
+      expect(result.current.invokeBuiltinTool).toHaveBeenCalledWith(messageId, {
+        apiName: WebBrowsingApiName.search,
+        arguments: JSON.stringify(query),
+        id: toolCallId,
+        identifier: WebBrowsingManifest.identifier,
+        type: 'builtin',
+      });
+    });
+
+    it('should not proceed if message not found', async () => {
+      vi.spyOn(dbMessageSelectors, 'getDbMessageById').mockImplementation(() => () => undefined);
+
+      const { result } = renderHook(() => useChatStore());
+
+      const query: SearchQuery = {
+        query: 'test query',
+      };
+
+      await act(async () => {
+        await result.current.triggerSearchAgain('non-existent-id', query);
+      });
+
+      // Should not call any methods if message not found
+      expect(result.current.optimisticUpdatePluginArguments).not.toHaveBeenCalled();
+      expect(result.current.invokeBuiltinTool).not.toHaveBeenCalled();
     });
   });
 
-  describe('saveSearXNGSearchResult', () => {
+  describe('saveSearchResult', () => {
     it('should save search result as tool message', async () => {
       const messageId = 'test-message-id';
       const parentId = 'parent-message-id';
       const mockMessage: Partial<UIChatMessage> = {
         id: messageId,
         parentId,
+        sessionId: undefined,
+        topicId: undefined,
         content: 'test content',
         plugin: {
           identifier: 'search',
@@ -261,10 +192,9 @@ describe('search actions', () => {
         role: 'assistant',
         createdAt: Date.now(),
         updatedAt: Date.now(),
-        meta: {},
       };
 
-      vi.spyOn(chatSelectors, 'getMessageById').mockImplementation(
+      vi.spyOn(dbMessageSelectors, 'getDbMessageById').mockImplementation(
         () => () => mockMessage as UIChatMessage,
       );
 
@@ -275,27 +205,32 @@ describe('search actions', () => {
         await saveSearchResult(messageId);
       });
 
-      expect(result.current.internal_createMessage).toHaveBeenCalledWith(
+      // Note: context is undefined when no operationId is set in messageOperationMap
+      expect(result.current.optimisticCreateMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           content: 'test content',
           parentId,
           plugin: mockMessage.plugin,
           pluginState: mockMessage.pluginState,
           role: 'tool',
+          agentId: 'session-id',
+          topicId: 'topic-id',
         }),
+        undefined,
       );
 
-      expect(result.current.internal_addToolToAssistantMessage).toHaveBeenCalledWith(
+      expect(result.current.optimisticAddToolToAssistantMessage).toHaveBeenCalledWith(
         parentId,
         expect.objectContaining({
           identifier: 'search',
           type: 'default',
         }),
+        undefined,
       );
     });
 
     it('should not save if message not found', async () => {
-      vi.spyOn(chatSelectors, 'getMessageById').mockImplementation(() => () => undefined);
+      vi.spyOn(dbMessageSelectors, 'getDbMessageById').mockImplementation(() => () => undefined);
 
       const { result } = renderHook(() => useChatStore());
       const { saveSearchResult } = result.current;
@@ -304,27 +239,85 @@ describe('search actions', () => {
         await saveSearchResult('non-existent-id');
       });
 
-      expect(result.current.internal_createMessage).not.toHaveBeenCalled();
-      expect(result.current.internal_addToolToAssistantMessage).not.toHaveBeenCalled();
+      expect(result.current.optimisticCreateMessage).not.toHaveBeenCalled();
+      expect(result.current.optimisticAddToolToAssistantMessage).not.toHaveBeenCalled();
     });
   });
 
-  describe('toggleSearchLoading', () => {
-    it('should toggle search loading state', () => {
+  describe('togglePageContent', () => {
+    it('should set activePageContentUrl', () => {
       const { result } = renderHook(() => useChatStore());
+      const url = 'https://example.com';
+
+      act(() => {
+        result.current.togglePageContent(url);
+      });
+
+      expect(useChatStore.getState().activePageContentUrl).toBe(url);
+    });
+  });
+
+  describe('saveSearchResult with context', () => {
+    it('should pass context to optimistic methods when operationId exists', async () => {
       const messageId = 'test-message-id';
+      const parentId = 'parent-message-id';
+      const contextTopicId = 'context-topic-id';
+      const operationId = 'op_test';
 
-      act(() => {
-        result.current.toggleSearchLoading(messageId, true);
+      const mockMessage: Partial<UIChatMessage> = {
+        id: messageId,
+        parentId,
+        sessionId: 'context-session-id',
+        topicId: contextTopicId,
+        content: 'test content',
+        plugin: {
+          identifier: 'search',
+          arguments: '{}',
+          apiName: 'search',
+          type: 'default',
+        },
+        pluginState: {},
+        role: 'tool',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+
+      vi.spyOn(dbMessageSelectors, 'getDbMessageById').mockImplementation(
+        () => () => mockMessage as UIChatMessage,
+      );
+
+      (useChatStore.getState().optimisticCreateMessage as Mock).mockResolvedValue({
+        id: 'new-message-id',
       });
 
-      expect(result.current.searchLoading[messageId]).toBe(true);
-
-      act(() => {
-        result.current.toggleSearchLoading(messageId, false);
+      // Set up messageOperationMap so saveSearchResult can get operationId
+      useChatStore.setState({
+        messageOperationMap: {
+          [messageId]: operationId,
+        },
       });
 
-      expect(result.current.searchLoading[messageId]).toBe(false);
+      const { result } = renderHook(() => useChatStore());
+
+      await act(async () => {
+        await result.current.saveSearchResult(messageId);
+      });
+
+      expect(result.current.optimisticAddToolToAssistantMessage).toHaveBeenCalledWith(
+        parentId,
+        expect.objectContaining({
+          identifier: 'search',
+          type: 'default',
+        }),
+        { operationId },
+      );
+      expect(result.current.optimisticCreateMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentId: 'session-id',
+          topicId: contextTopicId,
+        }),
+        { operationId },
+      );
     });
   });
 });

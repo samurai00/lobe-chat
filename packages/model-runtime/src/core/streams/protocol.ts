@@ -59,6 +59,11 @@ export interface StreamContext {
     name: string;
   };
   toolIndex?: number;
+  /**
+   * Map of tool information by index for parallel tool calls
+   * Used when multiple tools are called in parallel (e.g., GPT-5.2 parallel search)
+   */
+  tools?: Record<number, { id: string; index: number; name: string }>;
   usage?: ModelUsage;
 }
 
@@ -66,7 +71,7 @@ export interface StreamProtocolChunk {
   data: any;
   id?: string;
   type: // pure text
-  | 'text'
+    | 'text'
     // base64 format image
     | 'base64_image'
     // Tools use
@@ -77,6 +82,10 @@ export interface StreamProtocolChunk {
     | 'reasoning_signature'
     // flagged reasoning signature
     | 'flagged_reasoning_signature'
+    // multimodal content part in reasoning
+    | 'reasoning_part'
+    // multimodal content part in content
+    | 'content_part'
     // Search or Grounding
     | 'grounding'
     // stop signal
@@ -91,6 +100,21 @@ export interface StreamProtocolChunk {
     | 'data';
 }
 
+/**
+ * Stream content part chunk data for multimodal support
+ */
+export interface StreamPartChunkData {
+  content: string;
+  // whether this part is in reasoning or regular content
+  inReasoning: boolean;
+  // image MIME type
+  mimeType?: string;
+  // text content or base64 image data
+  partType: 'text' | 'image';
+  // Optional signature for reasoning verification (Google Gemini feature)
+  thoughtSignature?: string;
+}
+
 export interface StreamToolCallChunkData {
   function?: {
     arguments?: string;
@@ -98,6 +122,7 @@ export interface StreamToolCallChunkData {
   };
   id?: string;
   index: number;
+  thoughtSignature?: string;
   type: 'function' | string;
 }
 
@@ -126,9 +151,19 @@ export function readableFromAsyncIterable<T>(iterable: AsyncIterable<T>) {
     },
 
     async pull(controller) {
-      const { done, value } = await it.next();
-      if (done) controller.close();
-      else controller.enqueue(value);
+      try {
+        const { done, value } = await it.next();
+        if (done) controller.close();
+        else controller.enqueue(value);
+      } catch (e) {
+        const error = e as Error;
+
+        controller.enqueue(
+          (ERROR_CHUNK_PREFIX +
+            JSON.stringify({ message: error.message, name: error.name, stack: error.stack })) as T,
+        );
+        controller.close();
+      }
     },
   });
 }
@@ -146,9 +181,19 @@ export const convertIterableToStream = <T>(stream: AsyncIterable<T>) => {
       await it.return?.(reason);
     },
     async pull(controller) {
-      const { done, value } = await it.next();
-      if (done) controller.close();
-      else controller.enqueue(value);
+      try {
+        const { done, value } = await it.next();
+        if (done) controller.close();
+        else controller.enqueue(value);
+      } catch (e) {
+        const error = e as Error;
+
+        controller.enqueue(
+          (ERROR_CHUNK_PREFIX +
+            JSON.stringify({ message: error.message, name: error.name, stack: error.stack })) as T,
+        );
+        controller.close();
+      }
     },
 
     async start(controller) {
@@ -221,6 +266,8 @@ export function createCallbacksTransformer(cb: ChatStreamCallbacks | undefined) 
   let speed: ModelPerformance | undefined;
   let grounding: any;
   let toolsCalling: any;
+  // Track base64 images for accumulation
+  let base64Images: Array<{ data: string; id: string }> = [];
 
   let currentType = '' as unknown as StreamProtocolChunk['type'];
   const callbacks = cb || {};
@@ -278,6 +325,41 @@ export function createCallbacksTransformer(cb: ChatStreamCallbacks | undefined) 
 
             aggregatedThinking += data;
             await callbacks.onThinking?.(data);
+            break;
+          }
+
+          case 'base64_image': {
+            // data format: { image: { id, data }, images: [...] }
+            const imageData = data as { image: { data: string; id: string }; images: any[] };
+            base64Images.push(imageData.image);
+            await callbacks.onBase64Image?.({
+              image: imageData.image,
+              images: base64Images,
+            });
+            break;
+          }
+
+          case 'content_part': {
+            // data format: StreamPartChunkData
+            const partData = data as StreamPartChunkData;
+            await callbacks.onContentPart?.({
+              content: partData.content,
+              mimeType: partData.mimeType,
+              partType: partData.partType,
+              thoughtSignature: partData.thoughtSignature,
+            });
+            break;
+          }
+
+          case 'reasoning_part': {
+            // data format: StreamPartChunkData
+            const partData = data as StreamPartChunkData;
+            await callbacks.onReasoningPart?.({
+              content: partData.content,
+              mimeType: partData.mimeType,
+              partType: partData.partType,
+              thoughtSignature: partData.thoughtSignature,
+            });
             break;
           }
 
@@ -340,25 +422,25 @@ export const createFirstErrorHandleTransformer = (
 export const createSSEDataExtractor = () =>
   new TransformStream({
     transform(chunk: Uint8Array, controller) {
-      // 将 Uint8Array 转换为字符串
+      // Convert Uint8Array to string
       const text = new TextDecoder().decode(chunk, { stream: true });
 
-      // 处理多行数据的情况
+      // Handle multi-line data case
       const lines = text.split('\n');
 
       for (const line of lines) {
-        // 只处理以 "data: " 开头的行
+        // Only process lines starting with "data: "
         if (line.startsWith('data: ')) {
-          // 提取 "data: " 后面的实际数据
+          // Extract the actual data after "data: "
           const jsonText = line.slice(6);
 
-          // 跳过心跳消息
+          // Skip heartbeat messages
           if (jsonText === '[DONE]') continue;
 
           try {
-            // 解析 JSON 数据
+            // Parse JSON data
             const data = JSON.parse(jsonText);
-            // 将解析后的数据传递给下一个处理器
+            // Pass parsed data to the next processor
             controller.enqueue(data);
           } catch {
             console.warn('Failed to parse SSE data:', jsonText);
@@ -379,15 +461,24 @@ export const createTokenSpeedCalculator = (
   {
     inputStartAt,
     streamStack,
-    enableStreaming = true, // 选择 TPS 计算方式（非流式时传 false）
+    enableStreaming = true, // Select TPS calculation method (pass false for non-streaming)
   }: { enableStreaming?: boolean; inputStartAt?: number; streamStack?: StreamContext } = {},
 ) => {
   let outputStartAt: number | undefined;
 
   const process = (chunk: StreamProtocolChunk) => {
     let result = [chunk];
-    // if the chunk is the first text or reasoning chunk, set as output start
-    if (!outputStartAt && (chunk.type === 'text' || chunk.type === 'reasoning')) {
+    // Set outputStartAt when receiving the first content chunk (for TTFT calculation)
+    // - text/reasoning: standard text output events
+    // - content_part/reasoning_part: multimodal output events used by Gemini 3+ models
+    //   which emit structured parts instead of plain text events
+    if (
+      !outputStartAt &&
+      (chunk.type === 'text' ||
+        chunk.type === 'reasoning' ||
+        chunk.type === 'content_part' ||
+        chunk.type === 'reasoning_part')
+    ) {
       outputStartAt = Date.now();
     }
 

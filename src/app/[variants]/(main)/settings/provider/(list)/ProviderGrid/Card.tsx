@@ -1,46 +1,58 @@
+import { BRANDING_PROVIDER } from '@lobechat/business-const';
 import { ProviderCombine, ProviderIcon } from '@lobehub/icons';
-import { Avatar, Text } from '@lobehub/ui';
-import { Divider, Skeleton } from 'antd';
+import { Avatar, Flexbox, Skeleton, Text } from '@lobehub/ui';
+import { Divider } from 'antd';
+import { cssVar, cx } from 'antd-style';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Flexbox } from 'react-layout-kit';
 
-import Link from '@/components/Link';
-import { AiProviderListItem } from '@/types/aiProvider';
+import { BrandingProviderCard } from '@/business/client/features/BrandingProviderCard';
+import { useIsDark } from '@/hooks/useIsDark';
+import { type AiProviderListItem } from '@/types/aiProvider';
 
 import EnableSwitch from './EnableSwitch';
-import { useStyles } from './style';
+import { styles } from './style';
 
 interface ProviderCardProps extends AiProviderListItem {
   loading?: boolean;
+  onProviderSelect: (provider: string) => void;
 }
 const ProviderCard = memo<ProviderCardProps>(
-  ({ id, description, name, enabled, source, logo, loading }) => {
+  ({ id, description, name, enabled, source, logo, loading, onProviderSelect }) => {
     const { t } = useTranslation('providers');
-    const { cx, styles, theme } = useStyles();
+    const isDarkMode = useIsDark();
 
     if (loading)
       return (
-        <Flexbox className={cx(styles.container)} gap={24} padding={16}>
+        <Flexbox
+          className={cx(isDarkMode ? styles.containerDark : styles.containerLight)}
+          gap={24}
+          padding={16}
+        >
           <Skeleton active />
         </Flexbox>
       );
 
-    /* ↓ cloud slot ↓ */
-
-    /* ↑ cloud slot ↑ */
+    if (id === BRANDING_PROVIDER) {
+      return <BrandingProviderCard />;
+    }
 
     return (
-      <Flexbox className={cx(styles.container)} gap={24}>
+      <Flexbox className={cx(isDarkMode ? styles.containerDark : styles.containerLight)} gap={24}>
         <Flexbox gap={12} padding={16} width={'100%'}>
-          <Link href={`/settings?active=provider&provider=${id}`}>
+          <div
+            onClick={() => {
+              onProviderSelect(id);
+            }}
+            style={{ cursor: 'pointer' }}
+          >
             <Flexbox gap={12} width={'100%'}>
               <Flexbox align={'center'} horizontal justify={'space-between'}>
                 {source === 'builtin' ? (
                   <ProviderCombine
                     provider={id}
                     size={24}
-                    style={{ color: theme.colorText }}
+                    style={{ color: cssVar.colorText }}
                     title={name}
                   />
                 ) : (
@@ -68,7 +80,7 @@ const ProviderCard = memo<ProviderCardProps>(
                 {source === 'custom' ? description : t(`${id}.description`)}
               </Text>
             </Flexbox>
-          </Link>
+          </div>
           <Divider style={{ margin: '4px 0' }} />
           <Flexbox horizontal justify={'space-between'}>
             <div />

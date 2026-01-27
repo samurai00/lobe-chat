@@ -5,6 +5,7 @@ export enum McpCategory {
   All = 'all',
   Business = 'business',
   Developer = 'developer',
+  Discover = 'discover',
   GamingEntertainment = 'gaming-entertainment',
   HealthWellness = 'health-wellness',
   Lifestyle = 'lifestyle',
@@ -17,7 +18,7 @@ export enum McpCategory {
   Tools = 'tools',
   TravelTransport = 'travel-transport',
   Weather = 'weather',
-  WebSearch = 'web-search',
+  WebSearch = 'web-search'
 }
 
 export enum McpSorts {
@@ -26,7 +27,8 @@ export enum McpSorts {
   IsFeatured = 'isFeatured',
   IsValidated = 'isValidated',
   RatingCount = 'ratingCount',
-  UpdatedAt = 'updatedAt',
+  Recommended = 'recommended',
+  UpdatedAt = 'updatedAt'
 }
 
 export enum McpNavKey {
@@ -39,10 +41,16 @@ export enum McpNavKey {
   Version = 'version',
 }
 
+export enum McpConnectionType {
+  http = 'http',
+  stdio = 'stdio',
+}
+
 export type DiscoverMcpItem = PluginItem;
 
 export interface McpQueryParams {
   category?: string;
+  connectionType?: McpConnectionType;
   locale?: string;
   order?: 'asc' | 'desc';
   page?: number;
@@ -54,6 +62,7 @@ export interface McpQueryParams {
 export type McpListResponse = PluginListResponse;
 
 export interface DiscoverMcpDetail extends PluginItemDetail {
+  haveCloudEndpoint?: boolean;
   isClaimed?: boolean;
   related: DiscoverMcpItem[];
 }

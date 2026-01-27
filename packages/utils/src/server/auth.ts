@@ -1,37 +1,24 @@
-import { enableClerk, enableNextAuth } from '@/const/auth';
-import { DESKTOP_USER_ID } from '@/const/desktop';
-import { isDesktop } from '@/const/version';
+import { headers } from 'next/headers';
+
+import { auth } from '@/auth';
 
 export const getUserAuth = async () => {
-  if (enableClerk) {
-    const { ClerkAuth } = await import('@/libs/clerk-auth');
+  const currentHeaders = await headers();
+  const requestHeaders = Object.fromEntries(currentHeaders.entries());
 
-    const clerkAuth = new ClerkAuth();
+  const session = await auth.api.getSession({
+    headers: requestHeaders,
+  });
 
-    return await clerkAuth.getAuth();
-  }
+  const userId = session?.user?.id;
 
-  if (enableNextAuth) {
-    const { default: NextAuth } = await import('@/libs/next-auth');
-
-    const session = await NextAuth.auth();
-
-    const userId = session?.user.id;
-
-    return { nextAuth: session, userId };
-  }
-
-  if (isDesktop) {
-    return { userId: DESKTOP_USER_ID };
-  }
-
-  throw new Error('Auth method is not enabled');
+  return { betterAuth: session, userId };
 };
 
 /**
- * 从授权头中提取 Bearer Token
- * @param authHeader - 授权头 (例如 "Bearer xxx")
- * @returns Bearer Token 或 null（如果授权头无效或不存在）
+ * Extract Bearer Token from authorization header
+ * @param authHeader - Authorization header (e.g. "Bearer xxx")
+ * @returns Bearer Token or null (if authorization header is invalid or does not exist)
  */
 export const extractBearerToken = (authHeader?: string | null): string | null => {
   if (!authHeader) return null;
@@ -51,9 +38,9 @@ export const extractBearerToken = (authHeader?: string | null): string | null =>
 };
 
 /**
- * 从 Oidc-Auth header 中提取 JWT token
- * @param authHeader - Oidc-Auth header 值 (例如 "Oidc-Auth xxx")
- * @returns JWT token 或 null（如果授权头无效或不存在）
+ * Extract JWT token from Oidc-Auth header
+ * @param authHeader - Oidc-Auth header value (e.g. "Oidc-Auth xxx")
+ * @returns JWT token or null (if authorization header is invalid or does not exist)
  */
 export const extractOidcAuthToken = (authHeader?: string | null): string | null => {
   if (!authHeader) return null;

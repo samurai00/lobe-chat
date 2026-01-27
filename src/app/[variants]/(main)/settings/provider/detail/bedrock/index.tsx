@@ -1,16 +1,16 @@
 'use client';
 
 import { Select } from '@lobehub/ui';
+import { BedrockProviderCard } from 'model-bank/modelProviders';
 import { useTranslation } from 'react-i18next';
 
 import { FormPassword } from '@/components/FormInput';
-import { BedrockProviderCard } from '@/config/modelProviders';
+import { SkeletonInput } from '@/components/Skeleton';
 import { aiProviderSelectors, useAiInfraStore } from '@/store/aiInfra';
-import { GlobalLLMProviderKey } from '@/types/user/settings';
+import { type GlobalLLMProviderKey } from '@/types/user/settings';
 
 import { KeyVaultsConfigKey } from '../../const';
-import { SkeletonInput } from '../../features/ProviderConfig';
-import { ProviderItem } from '../../type';
+import { type ProviderItem } from '../../type';
 import ProviderDetail from '../default';
 
 const providerKey: GlobalLLMProviderKey = 'bedrock';

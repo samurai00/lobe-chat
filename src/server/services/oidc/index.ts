@@ -1,7 +1,7 @@
 import debug from 'debug';
 
 import { createContextForInteractionDetails } from '@/libs/oidc-provider/http-adapter';
-import { OIDCProvider } from '@/libs/oidc-provider/provider';
+import { type OIDCProvider } from '@/libs/oidc-provider/provider';
 
 import { getOIDCProvider } from './oidcProvider';
 
@@ -35,16 +35,40 @@ export class OIDCService {
   }
 
   async findOrCreateGrants(accountId: string, clientId: string, existingGrantId?: string) {
-    // 2. 查找或创建 Grant 对象
+    // 2. Find or create Grant object
     let grant;
     if (existingGrantId) {
-      // 如果之前的交互步骤已经关联了 Grant
+      // If a previous interaction step already associated a Grant
       grant = await this.provider.Grant.find(existingGrantId);
       log('Found existing grantId: %s', existingGrantId);
+      if (grant) {
+        const accountMismatch = grant.accountId && grant.accountId !== accountId;
+        const clientMismatch = grant.clientId && grant.clientId !== clientId;
+
+        if (accountMismatch || clientMismatch) {
+          log(
+            'Discarding stale grant %s due to mismatch (stored account=%s, client=%s; expected account=%s, client=%s)',
+            existingGrantId,
+            grant.accountId,
+            grant.clientId,
+            accountId,
+            clientId,
+          );
+          try {
+            await grant.destroy();
+            log('Destroyed mismatched grant: %s', existingGrantId);
+          } catch (error) {
+            log('Failed to destroy mismatched grant %s: %O', existingGrantId, error);
+          }
+          grant = undefined;
+        }
+      } else {
+        log('Existing grantId %s not found in storage, will create a new grant', existingGrantId);
+      }
     }
 
     if (!grant) {
-      // 如果没有找到或没有 existingGrantId，则创建新的
+      // If not found or no existingGrantId, create a new one
       grant = new this.provider.Grant({
         accountId: accountId,
         clientId: clientId,

@@ -1,32 +1,17 @@
-import { UIChatMessage } from '@lobechat/types';
+import { type UIChatMessage } from '@lobechat/types';
 
-import { ChatGroupAgentItem, ChatGroupItem } from '@/database/schemas/chatGroup';
-
-import type { SupervisorTodoItem } from './supervisor';
+import { type ChatGroupAgentItem } from '@/database/schemas/chatGroup';
 
 export interface ChatMessageState {
+  activeAgentId: string;
   /**
-   * @title 当前活动的会话
-   * @description 当前正在编辑或查看的会话
+   * Raw messages from database (flat structure)
    */
-  activeId: string;
-  /**
-   * Type of the currently active session ('agent' | 'group')
-   * Derived from session.type, used for caching to avoid repeated lookups
-   */
-  activeSessionType?: 'agent' | 'group';
+  dbMessagesMap: Record<string, UIChatMessage[]>;
   /**
    * Group agents maps by group ID
    */
   groupAgentMaps: Record<string, ChatGroupAgentItem[]>;
-  /**
-   * Group data maps by group ID
-   */
-  groupMaps: Record<string, ChatGroupItem>;
-  /**
-   * Groups initialization status
-   */
-  groupsInit: boolean;
   isCreatingMessage: boolean;
   /**
    * is the message is editing
@@ -40,38 +25,19 @@ export interface ChatMessageState {
    * whether messages have fetched
    */
   messagesInit: boolean;
+  /**
+   * Parsed messages for display (includes assistantGroup from conversation-flow)
+   */
   messagesMap: Record<string, UIChatMessage[]>;
-  /**
-   * Supervisor decision debounce timers by group ID
-   */
-  supervisorDebounceTimers: Record<string, number>;
-  /**
-   * Supervisor decision abort controllers by group ID
-   */
-  supervisorDecisionAbortControllers: Record<string, AbortController>;
-  /**
-   * Supervisor decision loading states
-   */
-  supervisorDecisionLoading: string[];
-  /**
-   * Supervisor todo list map keyed by session/topic combination
-   */
-  supervisorTodos: Record<string, SupervisorTodoItem[]>;
 }
 
 export const initialMessageState: ChatMessageState = {
-  activeId: 'inbox',
-  activeSessionType: undefined,
+  activeAgentId: '',
+  dbMessagesMap: {},
   groupAgentMaps: {},
-  groupMaps: {},
-  groupsInit: false,
   isCreatingMessage: false,
   messageEditingIds: [],
   messageLoadingIds: [],
   messagesInit: false,
   messagesMap: {},
-  supervisorDebounceTimers: {},
-  supervisorDecisionAbortControllers: {},
-  supervisorDecisionLoading: [],
-  supervisorTodos: {},
 };

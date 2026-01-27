@@ -1,17 +1,17 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { AiProviderModelListItem } from 'model-bank';
-import { mutate } from 'swr';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { withSWR } from '~test-utils';
 
+import { mutate } from '@/libs/swr';
 import { aiModelService } from '@/services/aiModel';
 
 import { useAiInfraStore as useStore } from '../../store';
 
 vi.mock('zustand/traditional');
 
-// Mock SWR
-vi.mock('swr', async () => {
-  const actual = await vi.importActual('swr');
+vi.mock('@/libs/swr', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/libs/swr')>();
   return {
     ...actual,
     mutate: vi.fn(),
@@ -101,7 +101,7 @@ describe('AiModelAction', () => {
         .mockResolvedValue(undefined);
       const serviceSpy = vi
         .spyOn(aiModelService, 'batchUpdateAiModels')
-        .mockResolvedValue(undefined);
+        .mockResolvedValue(undefined as any);
 
       await act(async () => {
         await result.current.batchUpdateAiModels(models);
@@ -119,7 +119,7 @@ describe('AiModelAction', () => {
       const { result } = renderHook(() => useStore());
       const serviceSpy = vi
         .spyOn(aiModelService, 'batchUpdateAiModels')
-        .mockResolvedValue(undefined);
+        .mockResolvedValue(undefined as any);
 
       await act(async () => {
         await result.current.batchUpdateAiModels([]);
@@ -137,7 +137,7 @@ describe('AiModelAction', () => {
         .mockResolvedValue(undefined);
       const serviceSpy = vi
         .spyOn(aiModelService, 'clearModelsByProvider')
-        .mockResolvedValue(undefined);
+        .mockResolvedValue(undefined as any);
 
       await act(async () => {
         await result.current.clearModelsByProvider('test-provider');
@@ -154,7 +154,9 @@ describe('AiModelAction', () => {
       const refreshSpy = vi
         .spyOn(result.current, 'refreshAiModelList')
         .mockResolvedValue(undefined);
-      const serviceSpy = vi.spyOn(aiModelService, 'clearRemoteModels').mockResolvedValue(undefined);
+      const serviceSpy = vi
+        .spyOn(aiModelService, 'clearRemoteModels')
+        .mockResolvedValue(undefined as any);
 
       await act(async () => {
         await result.current.clearRemoteModels('test-provider');
@@ -178,7 +180,9 @@ describe('AiModelAction', () => {
       const refreshSpy = vi
         .spyOn(result.current, 'refreshAiModelList')
         .mockResolvedValue(undefined);
-      const serviceSpy = vi.spyOn(aiModelService, 'createAiModel').mockResolvedValue(undefined);
+      const serviceSpy = vi
+        .spyOn(aiModelService, 'createAiModel')
+        .mockResolvedValue(undefined as any);
 
       await act(async () => {
         await result.current.createNewAiModel(params);
@@ -349,7 +353,9 @@ describe('AiModelAction', () => {
       const refreshSpy = vi
         .spyOn(result.current, 'refreshAiModelList')
         .mockResolvedValue(undefined);
-      const serviceSpy = vi.spyOn(aiModelService, 'deleteAiModel').mockResolvedValue(undefined);
+      const serviceSpy = vi
+        .spyOn(aiModelService, 'deleteAiModel')
+        .mockResolvedValue(undefined as any);
 
       await act(async () => {
         await result.current.removeAiModel('model-1', 'test-provider');
@@ -371,7 +377,7 @@ describe('AiModelAction', () => {
         .mockResolvedValue(undefined);
       const serviceSpy = vi
         .spyOn(aiModelService, 'toggleModelEnabled')
-        .mockResolvedValue(undefined);
+        .mockResolvedValue(undefined as any);
 
       await act(async () => {
         await result.current.toggleModelEnabled({ enabled: true, id: 'model-1' });
@@ -395,7 +401,7 @@ describe('AiModelAction', () => {
       const { result } = renderHook(() => useStore());
       const serviceSpy = vi
         .spyOn(aiModelService, 'toggleModelEnabled')
-        .mockResolvedValue(undefined);
+        .mockResolvedValue(undefined as any);
 
       await act(async () => {
         await result.current.toggleModelEnabled({ enabled: true, id: 'model-1' });
@@ -435,7 +441,9 @@ describe('AiModelAction', () => {
       const refreshSpy = vi
         .spyOn(result.current, 'refreshAiModelList')
         .mockResolvedValue(undefined);
-      const serviceSpy = vi.spyOn(aiModelService, 'updateAiModel').mockResolvedValue(undefined);
+      const serviceSpy = vi
+        .spyOn(aiModelService, 'updateAiModel')
+        .mockResolvedValue(undefined as any);
 
       await act(async () => {
         await result.current.updateAiModelsConfig('model-1', 'test-provider', updateData);
@@ -485,8 +493,9 @@ describe('AiModelAction', () => {
 
       vi.spyOn(aiModelService, 'getAiProviderModelList').mockResolvedValue(mockModels);
 
-      const { result } = renderHook(() =>
-        useStore.getState().useFetchAiProviderModels('test-provider'),
+      const { result } = renderHook(
+        () => useStore.getState().useFetchAiProviderModels('test-provider'),
+        { wrapper: withSWR },
       );
 
       await waitFor(() => {
@@ -510,7 +519,9 @@ describe('AiModelAction', () => {
 
       vi.spyOn(aiModelService, 'getAiProviderModelList').mockResolvedValue(mockModels);
 
-      renderHook(() => useStore.getState().useFetchAiProviderModels('test-provider'));
+      renderHook(() => useStore.getState().useFetchAiProviderModels('test-provider'), {
+        wrapper: withSWR,
+      });
 
       await waitFor(() => {
         const state = useStore.getState();
@@ -542,7 +553,9 @@ describe('AiModelAction', () => {
 
       const setStateSpy = vi.spyOn(useStore, 'setState');
 
-      renderHook(() => useStore.getState().useFetchAiProviderModels('test-provider'));
+      renderHook(() => useStore.getState().useFetchAiProviderModels('test-provider'), {
+        wrapper: withSWR,
+      });
 
       await waitFor(() => {
         expect(aiModelService.getAiProviderModelList).toHaveBeenCalled();
@@ -584,7 +597,9 @@ describe('AiModelAction', () => {
 
       vi.spyOn(aiModelService, 'getAiProviderModelList').mockResolvedValue(newModels);
 
-      renderHook(() => useStore.getState().useFetchAiProviderModels('test-provider'));
+      renderHook(() => useStore.getState().useFetchAiProviderModels('test-provider'), {
+        wrapper: withSWR,
+      });
 
       await waitFor(() => {
         const state = useStore.getState();

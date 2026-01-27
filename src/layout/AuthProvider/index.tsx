@@ -1,15 +1,20 @@
-import { PropsWithChildren } from 'react';
+import { isDesktop } from '@lobechat/const';
+import { type PropsWithChildren } from 'react';
 
 import { authEnv } from '@/envs/auth';
 
-import Clerk from './Clerk';
-import NextAuth from './NextAuth';
+import BetterAuth from './BetterAuth';
+import Desktop from './Desktop';
 import NoAuth from './NoAuth';
 
 const AuthProvider = ({ children }: PropsWithChildren) => {
-  if (authEnv.NEXT_PUBLIC_ENABLE_CLERK_AUTH) return <Clerk>{children}</Clerk>;
+  if (isDesktop) {
+    return <Desktop>{children}</Desktop>;
+  }
 
-  if (authEnv.NEXT_PUBLIC_ENABLE_NEXT_AUTH) return <NextAuth>{children}</NextAuth>;
+  if (authEnv.AUTH_SECRET) {
+    return <BetterAuth>{children}</BetterAuth>;
+  }
 
   return <NoAuth>{children}</NoAuth>;
 };

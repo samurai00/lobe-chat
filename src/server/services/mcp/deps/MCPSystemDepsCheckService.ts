@@ -1,11 +1,11 @@
-import { DeploymentOption, SystemDependency } from '@lobehub/market-sdk';
+import { type DeploymentOption, type SystemDependency } from '@lobehub/market-sdk';
 import debug from 'debug';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 
-import { SystemDependencyCheckResult } from '@/types/plugins';
+import { type SystemDependencyCheckResult } from '@/types/plugins';
 
-import { InstallationChecker, PackageInstallCheckResult } from './types';
+import { type InstallationChecker, type PackageInstallCheckResult } from './types';
 
 const execPromise = promisify(exec);
 const log = debug('lobe-mcp:deps-check');
@@ -195,13 +195,13 @@ class MCPSystemDepsCheckService {
     // Check if all system dependencies meet requirements
     const allDependenciesMet = systemDependenciesResults.every((dep) => dep.meetRequirement);
 
-    // Check if configuration is required (有必填项)
+    // Check if configuration is required (has mandatory fields)
     const configSchema = option.connection?.configSchema;
     const needsConfig = Boolean(
       configSchema &&
-        // 检查是否有 required 数组且不为空
+        // Check if there's a non-empty required array
         ((Array.isArray(configSchema.required) && configSchema.required.length > 0) ||
-          // 检查 properties 中是否有字段标记为 required
+          // Check if any field in properties is marked as required
           (configSchema.properties &&
             Object.values(configSchema.properties).some((prop: any) => prop.required === true))),
     );

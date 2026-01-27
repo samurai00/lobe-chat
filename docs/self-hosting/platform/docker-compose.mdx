@@ -1,11 +1,12 @@
 ---
-title: Deploy LobeChat with Docker Compose
+title: Deploy LobeHub with Docker Compose
 description: >-
-  Learn how to deploy the LobeChat service using Docker Compose. Follow step-by-step instructions to install Docker, run the deployment command, and set up automatic updates.
-
+  Learn how to deploy the LobeHub service using Docker Compose. Follow
+  step-by-step instructions to install Docker, run the deployment command, and
+  set up automatic updates.
 tags:
   - Docker Compose
-  - LobeChat Service
+  - LobeHub Service
   - Docker Deployment
   - Automatic Updates
   - Crontab Script
@@ -21,7 +22,7 @@ tags:
   [![][docker-pulls-shield]][docker-pulls-link]
 </div>
 
-We provide a [Docker image][docker-release-link] for deploying the LobeChat service on your private device.
+We provide a [Docker image][docker-release-link] for deploying the LobeHub service on your private device.
 
 <Steps>
   ### Install Docker Container Environment
@@ -59,7 +60,6 @@ We provide a [Docker image][docker-release-link] for deploying the LobeChat serv
       environment:
         OPENAI_API_KEY: sk-xxxx
         OPENAI_PROXY_URL: https://api-proxy.com/v1
-        ACCESS_CODE: lobe66
   ```
 
   Run the following command to start the Lobe Chat service:

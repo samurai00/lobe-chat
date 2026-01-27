@@ -1,6 +1,6 @@
 import { fal } from '@fal-ai/client';
 import debug from 'debug';
-import { pick } from 'lodash-es';
+import { pick } from 'es-toolkit/compat';
 import { RuntimeImageGenParamsValue } from 'model-bank';
 import { ClientOptions } from 'openai';
 
@@ -71,7 +71,9 @@ export class LobeFalAI implements LobeRuntimeAI {
     // Ensure model has fal-ai/ prefix
     let endpoint = model.startsWith('fal-ai/') ? model : `fal-ai/${model}`;
     const hasImageUrls = (params.imageUrls?.length ?? 0) > 0;
-    if (['fal-ai/bytedance/seedream/v4', 'fal-ai/hunyuan-image/v3'].includes(endpoint)) {
+    if (
+      ['fal-ai/bytedance/seedream/v', 'fal-ai/hunyuan-image/v'].some((m) => endpoint.startsWith(m))
+    ) {
       endpoint += hasImageUrls ? '/edit' : '/text-to-image';
     } else if (endpoint === 'fal-ai/nano-banana' && hasImageUrls) {
       endpoint += '/edit';

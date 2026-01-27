@@ -1,22 +1,19 @@
-import { isDesktop } from '@lobechat/const';
-
 import { LobeChatDatabase } from '../type';
-import { getPgliteInstance } from './electron';
 import { getDBInstance } from './web-server';
 
 /**
- * 懒加载数据库实例
- * 避免每次模块导入时都初始化数据库
+ * Lazy-load database instance
+ * Avoid initializing the database every time the module is imported
  */
 let cachedDB: LobeChatDatabase | null = null;
 
 export const getServerDB = async (): Promise<LobeChatDatabase> => {
-  // 如果已经有缓存的实例，直接返回
+  // If there's already a cached instance, return it directly
   if (cachedDB) return cachedDB;
 
   try {
-    // 根据环境选择合适的数据库实例
-    cachedDB = isDesktop ? await getPgliteInstance() : getDBInstance();
+    // Select the appropriate database instance based on the environment
+    cachedDB = getDBInstance();
     return cachedDB;
   } catch (error) {
     console.error('❌ Failed to initialize database:', error);

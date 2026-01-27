@@ -1,8 +1,14 @@
-import { UserGuide, UserKeyVaults, UserPreference, UserSettings } from '@lobechat/types';
+import {
+  SSOProvider,
+  UserGeneralConfig,
+  UserGuide,
+  UserKeyVaults,
+  UserPreference,
+  UserSettings,
+} from '@lobechat/types';
 import { TRPCError } from '@trpc/server';
 import dayjs from 'dayjs';
-import { eq } from 'drizzle-orm';
-import type { AdapterAccount } from 'next-auth/adapters';
+import { and, eq, gt, inArray, or } from 'drizzle-orm';
 import type { PartialDeep } from 'type-fest';
 
 import { merge } from '@/utils/merge';
@@ -27,6 +33,22 @@ export class UserNotFoundError extends TRPCError {
   constructor() {
     super({ code: 'UNAUTHORIZED', message: 'user not found' });
   }
+}
+
+export interface ListUsersForMemoryExtractorCursor {
+  createdAt: Date;
+  id: string;
+}
+
+export type ListUsersForMemoryExtractorOptions = {
+  cursor?: ListUsersForMemoryExtractorCursor;
+  limit?: number;
+  whitelist?: string[];
+};
+
+export interface UserInfoForAIGeneration {
+  responseLanguage: string;
+  userName: string;
 }
 
 export class UserModel {
@@ -65,8 +87,10 @@ export class UserModel {
         email: users.email,
         firstName: users.firstName,
         fullName: users.fullName,
+        interests: users.interests,
         isOnboarded: users.isOnboarded,
         lastName: users.lastName,
+        onboarding: users.onboarding,
         preference: users.preference,
         settingsDefaultAgent: userSettings.defaultAgent,
 
@@ -75,6 +99,8 @@ export class UserModel {
         settingsImage: userSettings.image,
         settingsKeyVaults: userSettings.keyVaults,
         settingsLanguageModel: userSettings.languageModel,
+        settingsMarket: userSettings.market,
+        settingsMemory: userSettings.memory,
         settingsSystemAgent: userSettings.systemAgent,
         settingsTTS: userSettings.tts,
         settingsTool: userSettings.tool,
@@ -82,7 +108,8 @@ export class UserModel {
       })
       .from(users)
       .where(eq(users.id, this.userId))
-      .leftJoin(userSettings, eq(users.id, userSettings.id));
+      .leftJoin(userSettings, eq(users.id, userSettings.id))
+      .limit(1);
 
     if (!result || !result[0]) {
       throw new UserNotFoundError();
@@ -106,6 +133,8 @@ export class UserModel {
       image: state.settingsImage || {},
       keyVaults: decryptKeyVaults,
       languageModel: state.settingsLanguageModel || {},
+      market: state.settingsMarket || undefined,
+      memory: state.settingsMemory || {},
       systemAgent: state.settingsSystemAgent || {},
       tool: state.settingsTool || {},
       tts: state.settingsTTS || {},
@@ -116,8 +145,10 @@ export class UserModel {
       email: state.email || undefined,
       firstName: state.firstName || undefined,
       fullName: state.fullName || undefined,
+      interests: state.interests || undefined,
       isOnboarded: state.isOnboarded,
       lastName: state.lastName || undefined,
+      onboarding: state.onboarding || undefined,
       preference: state.preference as UserPreference,
       settings,
       userId: this.userId,
@@ -125,29 +156,45 @@ export class UserModel {
     };
   };
 
-  getUserSSOProviders = async () => {
-    const result = await this.db
+  getUserSSOProviders = async (): Promise<SSOProvider[]> => {
+    return this.db
       .select({
         expiresAt: nextauthAccounts.expires_at,
         provider: nextauthAccounts.provider,
         providerAccountId: nextauthAccounts.providerAccountId,
-        scope: nextauthAccounts.scope,
-        type: nextauthAccounts.type,
-        userId: nextauthAccounts.userId,
       })
       .from(nextauthAccounts)
       .where(eq(nextauthAccounts.userId, this.userId));
-    return result as unknown as AdapterAccount[];
   };
 
   getUserSettings = async () => {
     return this.db.query.userSettings.findFirst({ where: eq(userSettings.id, this.userId) });
   };
 
+  getUserPreference = async (): Promise<UserPreference | undefined> => {
+    const user = await this.db.query.users.findFirst({
+      columns: { preference: true },
+      where: eq(users.id, this.userId),
+    });
+    return user?.preference as UserPreference | undefined;
+  };
+
+  getUserSettingsDefaultAgentConfig = async () => {
+    const result = await this.db
+      .select({ defaultAgent: userSettings.defaultAgent })
+      .from(userSettings)
+      .where(eq(userSettings.id, this.userId))
+      .limit(1);
+
+    return result[0]?.defaultAgent;
+  };
+
   updateUser = async (value: Partial<UserItem>) => {
+    const nextValue = UserModel.normalizeUniqueUserFields(value);
+
     return this.db
       .update(users)
-      .set({ ...value, updatedAt: new Date() })
+      .set({ ...nextValue, updatedAt: new Date() })
       .where(eq(users.id, this.userId));
   };
 
@@ -189,6 +236,31 @@ export class UserModel {
       .where(eq(users.id, this.userId));
   };
 
+  /**
+   * Normalize unique user fields so empty strings become null, keeping unique constraints safe.
+   */
+  private static normalizeUniqueUserFields = <
+    T extends { email?: string | null; phone?: string | null; username?: string | null },
+  >(
+    value: T,
+  ) => {
+    const normalizedEmail =
+      typeof value.email === 'string' && value.email.trim() === '' ? null : value.email;
+    const normalizedPhone =
+      typeof value.phone === 'string' && value.phone.trim() === '' ? null : value.phone;
+    const normalizedUsername =
+      typeof value.username === 'string' && value.username.trim() === ''
+        ? null
+        : value.username?.trim();
+
+    return {
+      ...value,
+      ...(value.email !== undefined ? { email: normalizedEmail } : {}),
+      ...(value.phone !== undefined ? { phone: normalizedPhone } : {}),
+      ...(value.username !== undefined ? { username: normalizedUsername } : {}),
+    };
+  };
+
   // Static method
   static makeSureUserExist = async (db: LobeChatDatabase, userId: string) => {
     await db.insert(users).values({ id: userId }).onConflictDoNothing();
@@ -201,10 +273,8 @@ export class UserModel {
       if (!!user) return { duplicate: true };
     }
 
-    const [user] = await db
-      .insert(users)
-      .values({ ...params })
-      .returning();
+    const normalizedParams = this.normalizeUniqueUserFields(params);
+    const [user] = await db.insert(users).values(normalizedParams).returning();
 
     return { duplicate: false, user };
   };
@@ -215,6 +285,13 @@ export class UserModel {
 
   static findById = async (db: LobeChatDatabase, id: string) => {
     return db.query.users.findFirst({ where: eq(users.id, id) });
+  };
+
+  static findByUsername = async (db: LobeChatDatabase, username: string) => {
+    const normalizedUsername = username.trim();
+    if (!normalizedUsername) return null;
+
+    return db.query.users.findFirst({ where: eq(users.username, normalizedUsername) });
   };
 
   static findByEmail = async (db: LobeChatDatabase, email: string) => {
@@ -241,5 +318,58 @@ export class UserModel {
 
     // Decrypt keyVaults
     return await decryptor(state.settingsKeyVaults, id);
+  };
+
+  static listUsersForMemoryExtractor = (
+    db: LobeChatDatabase,
+    options: ListUsersForMemoryExtractorOptions = {},
+  ) => {
+    const cursorCondition = options.cursor
+      ? or(
+          gt(users.createdAt, options.cursor.createdAt),
+          and(eq(users.createdAt, options.cursor.createdAt), gt(users.id, options.cursor.id)),
+        )
+      : undefined;
+
+    const whitelistCondition =
+      options.whitelist && options.whitelist.length > 0
+        ? inArray(users.id, options.whitelist)
+        : undefined;
+
+    const where = and(cursorCondition, whitelistCondition);
+
+    return db.query.users.findMany({
+      columns: { createdAt: true, id: true },
+      limit: options.limit,
+      orderBy: (fields, { asc }) => [asc(fields.createdAt), asc(fields.id)],
+      where,
+    });
+  };
+
+  /**
+   * Get user info for AI generation (name and language preference)
+   */
+  static getInfoForAIGeneration = async (
+    db: LobeChatDatabase,
+    userId: string,
+  ): Promise<UserInfoForAIGeneration> => {
+    const result = await db
+      .select({
+        firstName: users.firstName,
+        fullName: users.fullName,
+        general: userSettings.general,
+      })
+      .from(users)
+      .leftJoin(userSettings, eq(users.id, userSettings.id))
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    const user = result[0];
+    const general = user?.general as UserGeneralConfig | undefined;
+
+    return {
+      responseLanguage: general?.responseLanguage || 'en-US',
+      userName: user?.fullName || user?.firstName || 'User',
+    };
   };
 }

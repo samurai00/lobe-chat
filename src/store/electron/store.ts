@@ -1,20 +1,26 @@
 import { shallow } from 'zustand/shallow';
 import { createWithEqualityFn } from 'zustand/traditional';
-import { StateCreator } from 'zustand/vanilla';
+import { type StateCreator } from 'zustand/vanilla';
 
 import { createDevtools } from '../middleware/createDevtools';
 import { type ElectronAppAction, createElectronAppSlice } from './actions/app';
+import {
+  type NavigationHistoryAction,
+  createNavigationHistorySlice,
+} from './actions/navigationHistory';
 import { type ElectronSettingsAction, settingsSlice } from './actions/settings';
 import { type ElectronRemoteServerAction, remoteSyncSlice } from './actions/sync';
 import { type ElectronState, initialState } from './initialState';
 
-//  ===============  聚合 createStoreFn ============ //
+//  ===============  Aggregate createStoreFn ============ //
 
 export interface ElectronStore
-  extends ElectronState,
+  extends
+    ElectronState,
     ElectronRemoteServerAction,
     ElectronAppAction,
-    ElectronSettingsAction {
+    ElectronSettingsAction,
+    NavigationHistoryAction {
   /* empty */
 }
 
@@ -25,9 +31,10 @@ const createStore: StateCreator<ElectronStore, [['zustand/devtools', never]]> = 
   ...remoteSyncSlice(...parameters),
   ...createElectronAppSlice(...parameters),
   ...settingsSlice(...parameters),
+  ...createNavigationHistorySlice(...parameters),
 });
 
-//  ===============  实装 useStore ============ //
+//  ===============  Implement useStore ============ //
 
 const devtools = createDevtools('electron');
 

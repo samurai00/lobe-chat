@@ -1,41 +1,49 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { INBOX_SESSION_ID } from '@lobechat/const';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createStoreUpdater } from 'zustand-utils';
 
-import { enableNextAuth } from '@/const/auth';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useAgentStore } from '@/store/agent';
 import { useAiInfraStore } from '@/store/aiInfra';
+import { useElectronStore } from '@/store/electron';
+import { electronSyncSelectors } from '@/store/electron/selectors';
 import { useGlobalStore } from '@/store/global';
-import { systemStatusSelectors } from '@/store/global/selectors';
 import { useServerConfigStore } from '@/store/serverConfig';
 import { serverConfigSelectors } from '@/store/serverConfig/selectors';
 import { useUserStore } from '@/store/user';
 import { authSelectors } from '@/store/user/selectors';
+import { useUserMemoryStore } from '@/store/userMemory';
+
+import { useUserStateRedirect } from './useUserStateRedirect';
 
 const StoreInitialization = memo(() => {
   // prefetch error ns to avoid don't show error content correctly
   useTranslation('error');
 
-  const router = useRouter();
-  const [isLogin, isSignedIn, useInitUserState] = useUserStore((s) => [
+  const [isLogin, useInitUserState] = useUserStore((s) => [
     authSelectors.isLogin(s),
-    s.isSignedIn,
     s.useInitUserState,
   ]);
 
   const { serverConfig } = useServerConfigStore();
 
-  const useInitSystemStatus = useGlobalStore((s) => s.useInitSystemStatus);
+  const [useInitSystemStatus, useCheckServerVersion] = useGlobalStore((s) => [
+    s.useInitSystemStatus,
+    s.useCheckServerVersion,
+  ]);
 
-  const useInitAgentStore = useAgentStore((s) => s.useInitInboxAgentStore);
+  const useInitBuiltinAgent = useAgentStore((s) => s.useInitBuiltinAgent);
   const useInitAiProviderKeyVaults = useAiInfraStore((s) => s.useFetchAiProviderRuntimeState);
+  const useInitIdentities = useUserMemoryStore((s) => s.useInitIdentities);
 
   // init the system preference
   useInitSystemStatus();
+
+  // check server version in desktop app
+  useCheckServerVersion();
 
   // fetch server config
   const useFetchServerConfig = useServerConfigStore((s) => s.useInitServerConfig);
@@ -54,22 +62,24 @@ const StoreInitialization = memo(() => {
    * IMPORTANT: Explicitly convert to boolean to avoid passing null/undefined downstream,
    * which would cause unnecessary API requests with invalid login state.
    */
-  const isDBInited = useGlobalStore(systemStatusSelectors.isDBInited);
-  const isLoginOnInit = isDBInited ? Boolean(enableNextAuth ? isSignedIn : isLogin) : false;
+  const isLoginOnInit = Boolean(isLogin);
 
-  // init inbox agent and default agent config
-  useInitAgentStore(isLoginOnInit, serverConfig.defaultAgent?.config);
+  // init inbox agent via builtin agent mechanism
+  useInitBuiltinAgent(INBOX_SESSION_ID, { isLogin: isLoginOnInit });
+
+  const isSyncActive = useElectronStore((s) => electronSyncSelectors.isSyncActive(s));
 
   // init user provider key vaults
-  useInitAiProviderKeyVaults(isLoginOnInit);
+  useInitAiProviderKeyVaults(isLoginOnInit, isSyncActive);
+
+  // init user memory identities (for chat context injection)
+  useInitIdentities(isLoginOnInit);
+
+  const onUserStateSuccess = useUserStateRedirect();
 
   // init user state
   useInitUserState(isLoginOnInit, serverConfig, {
-    onSuccess: (state) => {
-      if (state.isOnboard === false) {
-        router.push('/onboard');
-      }
-    },
+    onSuccess: onUserStateSuccess,
   });
 
   const useStoreUpdater = createStoreUpdater(useGlobalStore);
@@ -77,7 +87,6 @@ const StoreInitialization = memo(() => {
   const mobile = useIsMobile();
 
   useStoreUpdater('isMobile', mobile);
-  useStoreUpdater('router', router);
 
   return null;
 });

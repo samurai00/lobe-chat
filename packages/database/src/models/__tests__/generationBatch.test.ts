@@ -1,9 +1,8 @@
 // @vitest-environment node
 import { GenerationConfig } from '@lobechat/types';
+import { AsyncTaskStatus } from '@lobechat/types';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-import { AsyncTaskStatus } from '@/types/asyncTask';
 
 import {
   NewGenerationBatch,
@@ -14,7 +13,7 @@ import {
 } from '../../schemas';
 import { LobeChatDatabase } from '../../type';
 import { GenerationBatchModel } from '../generationBatch';
-import { getTestDB } from './_util';
+import { getTestDB } from '../../core/getTestDB';
 
 const serverDB: LobeChatDatabase = await getTestDB();
 

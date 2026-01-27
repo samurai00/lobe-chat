@@ -1,14 +1,15 @@
-import { Icon, ItemType } from '@lobehub/ui';
+import { Icon, type ItemType } from '@lobehub/ui';
 import isEqual from 'fast-deep-equal';
 import { ArrowRight, LibraryBig } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import FileIcon from '@/components/FileIcon';
-import RepoIcon from '@/components/RepoIcon';
+import RepoIcon from '@/components/LibIcon';
 import { useAgentStore } from '@/store/agent';
-import { agentSelectors } from '@/store/agent/selectors';
+import { agentByIdSelectors } from '@/store/agent/selectors';
 
-import CheckboxItem from '../components/CheckbokWithLoading';
+import { useAgentId } from '../../hooks/useAgentId';
+import CheckboxItem from '../components/CheckboxWithLoading';
 
 export const useControls = ({
   setModalOpen,
@@ -18,9 +19,13 @@ export const useControls = ({
   setUpdating: (updating: boolean) => void;
 }) => {
   const { t } = useTranslation('chat');
+  const agentId = useAgentId();
 
-  const files = useAgentStore(agentSelectors.currentAgentFiles, isEqual);
-  const knowledgeBases = useAgentStore(agentSelectors.currentAgentKnowledgeBases, isEqual);
+  const files = useAgentStore((s) => agentByIdSelectors.getAgentFilesById(agentId)(s), isEqual);
+  const knowledgeBases = useAgentStore(
+    (s) => agentByIdSelectors.getAgentKnowledgeBasesById(agentId)(s),
+    isEqual,
+  );
 
   const [toggleFile, toggleKnowledgeBase] = useAgentStore((s) => [
     s.toggleFile,
@@ -28,28 +33,6 @@ export const useControls = ({
   ]);
 
   const items: ItemType[] = [
-    // {
-    //   children: [
-    //     {
-    //       icon: <RepoIcon />,
-    //       key: 'allFiles',
-    //       label: <KnowledgeBaseItem id={'all'} label={t('knowledgeBase.allFiles')} />,
-    //     },
-    //     {
-    //       icon: <RepoIcon />,
-    //       key: 'allRepos',
-    //       label: <KnowledgeBaseItem id={'all'} label={t('knowledgeBase.allKnowledgeBases')} />,
-    //     },
-    //   ],
-    //   key: 'all',
-    //   label: (
-    //     <Flexbox horizontal justify={'space-between'}>
-    //       {t('knowledgeBase.all')}
-    //       {/*<Link href={'/files'}>{t('knowledgeBase.more')}</Link>*/}
-    //     </Flexbox>
-    //   ),
-    //   type: 'group',
-    // },
     {
       children: [
         // first the files
@@ -88,8 +71,8 @@ export const useControls = ({
           ),
         })),
       ],
-      key: 'relativeFilesOrKnowledgeBases',
-      label: t('knowledgeBase.relativeFilesOrKnowledgeBases'),
+      key: 'relativeFilesOrLibraries',
+      label: t('knowledgeBase.relativeFilesOrLibraries'),
       type: 'group',
     },
     {

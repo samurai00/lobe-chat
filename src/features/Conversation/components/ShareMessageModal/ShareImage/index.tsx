@@ -1,21 +1,21 @@
-import { UIChatMessage } from '@lobechat/types';
+import { type UIChatMessage } from '@lobechat/types';
 import { Button, Form, type FormItemProps, Segmented } from '@lobehub/ui';
+import { Flexbox } from '@lobehub/ui';
 import { Switch } from 'antd';
 import { CopyIcon } from 'lucide-react';
 import { memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Flexbox } from 'react-layout-kit';
 
 import { FORM_STYLE } from '@/const/layoutTokens';
 import { useImgToClipboard } from '@/hooks/useImgToClipboard';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { ImageType, imageTypeOptions, useScreenshot } from '@/hooks/useScreenshot';
-import { useSessionStore } from '@/store/session';
-import { sessionMetaSelectors } from '@/store/session/selectors';
+import { useAgentStore } from '@/store/agent';
+import { agentSelectors } from '@/store/agent/selectors';
 
-import { useStyles } from '../style';
+import { styles } from '../style';
 import Preview from './Preview';
-import { FieldType } from './type';
+import { type FieldType } from './type';
 
 const DEFAULT_FIELD_VALUE: FieldType = {
   imageType: ImageType.JPG,
@@ -25,10 +25,9 @@ const DEFAULT_FIELD_VALUE: FieldType = {
 
 const ShareImage = memo<{ message: UIChatMessage; mobile?: boolean; uniqueId?: string }>(
   ({ message, uniqueId }) => {
-    const currentAgentTitle = useSessionStore(sessionMetaSelectors.currentAgentTitle);
+    const currentAgentTitle = useAgentStore(agentSelectors.currentAgentTitle);
     const [fieldValue, setFieldValue] = useState<FieldType>(DEFAULT_FIELD_VALUE);
     const { t } = useTranslation(['chat', 'common']);
-    const { styles } = useStyles();
 
     // 生成唯一的预览ID，避免DOM冲突
     const previewId = uniqueId ? `preview-${uniqueId}` : 'preview';
@@ -36,7 +35,7 @@ const ShareImage = memo<{ message: UIChatMessage; mobile?: boolean; uniqueId?: s
     const { loading, onDownload, title } = useScreenshot({
       id: `#${previewId}`,
       imageType: fieldValue.imageType,
-      title: currentAgentTitle,
+      title: currentAgentTitle ?? undefined,
     });
     const { loading: copyLoading, onCopy } = useImgToClipboard({ id: `#${previewId}` });
     const settings: FormItemProps[] = [

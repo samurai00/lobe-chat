@@ -1,7 +1,7 @@
+import isEqual from 'fast-deep-equal';
 import { produce } from 'immer';
 
-import { CreateTopicParams } from '@/services/topic/type';
-import { ChatTopic } from '@/types/topic';
+import { type ChatTopic, type CreateTopicParams } from '@/types/topic';
 
 interface AddChatTopicAction {
   type: 'addTopic';
@@ -14,21 +14,12 @@ interface UpdateChatTopicAction {
   value: Partial<ChatTopic>;
 }
 
-interface UpdateTopicsAction {
-  type: 'updateTopics';
-  value: ChatTopic[];
-}
-
 interface DeleteChatTopicAction {
   id: string;
   type: 'deleteTopic';
 }
 
-export type ChatTopicDispatch =
-  | AddChatTopicAction
-  | UpdateChatTopicAction
-  | DeleteChatTopicAction
-  | UpdateTopicsAction;
+export type ChatTopicDispatch = AddChatTopicAction | UpdateChatTopicAction | DeleteChatTopicAction;
 
 export const topicReducer = (state: ChatTopic[] = [], payload: ChatTopicDispatch): ChatTopic[] => {
   switch (payload.type) {
@@ -53,15 +44,18 @@ export const topicReducer = (state: ChatTopic[] = [], payload: ChatTopicDispatch
         const topicIndex = draftState.findIndex((topic) => topic.id === id);
 
         if (topicIndex !== -1) {
-          // TODO: updatedAt 类型后续需要修改为 Date
-          // @ts-ignore
-          draftState[topicIndex] = { ...draftState[topicIndex], ...value, updatedAt: new Date() };
+          const currentTopic = draftState[topicIndex];
+          const mergedTopic = { ...currentTopic, ...value };
+
+          // Only update if the merged value is different from current (excluding updatedAt)
+
+          if (!isEqual(currentTopic, mergedTopic)) {
+            // TODO: updatedAt 类型后续需要修改为 Date
+            // @ts-ignore
+            draftState[topicIndex] = { ...mergedTopic, updatedAt: new Date() };
+          }
         }
       });
-    }
-
-    case 'updateTopics': {
-      return payload.value;
     }
 
     case 'deleteTopic': {

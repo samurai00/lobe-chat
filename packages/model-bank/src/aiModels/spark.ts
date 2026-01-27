@@ -3,24 +3,27 @@ import { AIChatModelCard } from '../types/aiModel';
 const sparkChatModels: AIChatModelCard[] = [
   {
     abilities: {
+      functionCall: true,
       reasoning: true,
       search: true,
     },
-    contextWindowTokens: 32_768,
+    contextWindowTokens: 65_535,
     description:
-      'Spark X1 模型将进一步升级，在原来数学任务国内领先基础上，推理、文本生成、语言理解等通用任务实现效果对标 OpenAI o1 和 DeepSeek R1。',
-    displayName: 'Spark X1',
-    id: 'x1',
-    maxOutput: 32_768,
+      'X1.5 updates: (1) adds dynamic thinking mode controlled by the `thinking` field; (2) larger context length with 64K input and 64K output; (3) supports FunctionCall.',
+    displayName: 'Spark X1.5',
+    enabled: true,
+    id: 'spark-x',
+    maxOutput: 65_535,
     settings: {
+      extendParams: ['thinking'],
       searchImpl: 'params',
     },
     type: 'chat',
   },
   {
-    contextWindowTokens: 8192,
+    contextWindowTokens: 8192 + 4096,
     description:
-      'Spark Lite 是一款轻量级大语言模型，具备极低的延迟与高效的处理能力，完全免费开放，支持实时在线搜索功能。其快速响应的特性使其在低算力设备上的推理应用和模型微调中表现出色，为用户带来出色的成本效益和智能体验，尤其在知识问答、内容生成及搜索场景下表现不俗。',
+      'Spark Lite is a lightweight LLM with ultra-low latency and efficient processing. It is fully free and supports real-time web search. Its fast responses perform well on low-compute devices and for model fine-tuning, delivering strong cost efficiency and an intelligent experience, especially for knowledge Q&A, content generation, and search scenarios.',
     displayName: 'Spark Lite',
     enabled: true,
     id: 'lite',
@@ -31,11 +34,10 @@ const sparkChatModels: AIChatModelCard[] = [
     abilities: {
       search: true,
     },
-    contextWindowTokens: 8192,
+    contextWindowTokens: 8192 + 8192,
     description:
-      'Spark Pro 是一款为专业领域优化的高性能大语言模型，专注数学、编程、医疗、教育等多个领域，并支持联网搜索及内置天气、日期等插件。其优化后模型在复杂知识问答、语言理解及高层次文本创作中展现出色表现和高效性能，是适合专业应用场景的理想选择。',
+      'Spark Pro is a high-performance LLM optimized for professional domains, focusing on math, programming, healthcare, and education, with web search and built-in plugins such as weather and date. It delivers strong performance and efficiency in complex knowledge Q&A, language understanding, and advanced text creation, making it an ideal choice for professional use cases.',
     displayName: 'Spark Pro',
-    enabled: true,
     id: 'generalv3',
     maxOutput: 8192,
     settings: {
@@ -46,10 +48,10 @@ const sparkChatModels: AIChatModelCard[] = [
   {
     contextWindowTokens: 131_072,
     description:
-      'Spark Pro 128K 配置了特大上下文处理能力，能够处理多达128K的上下文信息，特别适合需通篇分析和长期逻辑关联处理的长文内容，可在复杂文本沟通中提供流畅一致的逻辑与多样的引用支持。',
+      'Spark Pro 128K provides a very large context capacity, handling up to 128K context, ideal for long-form documents requiring full-text analysis and long-range coherence, with smooth logic and diverse citation support in complex discussions.',
     displayName: 'Spark Pro 128K',
     id: 'pro-128k',
-    maxOutput: 4096,
+    maxOutput: 131_072,
     type: 'chat',
   },
   {
@@ -57,11 +59,10 @@ const sparkChatModels: AIChatModelCard[] = [
       functionCall: true,
       search: true,
     },
-    contextWindowTokens: 8192,
+    contextWindowTokens: 8192 + 8192,
     description:
-      'Spark Max 为功能最为全面的版本，支持联网搜索及众多内置插件。其全面优化的核心能力以及系统角色设定和函数调用功能，使其在各种复杂应用场景中的表现极为优异和出色。',
+      'Spark Max is the most full-featured version, supporting web search and many built-in plugins. Its fully optimized core capabilities, system roles, and function calling deliver excellent performance across complex application scenarios.',
     displayName: 'Spark Max',
-    enabled: true,
     id: 'generalv3.5',
     maxOutput: 8192,
     settings: {
@@ -74,12 +75,12 @@ const sparkChatModels: AIChatModelCard[] = [
       functionCall: true,
       search: true,
     },
-    contextWindowTokens: 32_768,
+    contextWindowTokens: 32_768 + 32_768,
     description:
-      'Spark Max 32K 配置了大上下文处理能力，更强的上下文理解和逻辑推理能力，支持32K tokens的文本输入，适用于长文档阅读、私有知识问答等场景',
+      'Spark Max 32K offers large-context processing with stronger context understanding and logical reasoning, supporting 32K-token inputs for long document reading and private knowledge Q&A.',
     displayName: 'Spark Max 32K',
     id: 'max-32k',
-    maxOutput: 8192,
+    maxOutput: 32_768,
     settings: {
       searchImpl: 'internal',
     },
@@ -88,15 +89,15 @@ const sparkChatModels: AIChatModelCard[] = [
   {
     abilities: {
       functionCall: true,
+      reasoning: true,
       search: true,
     },
-    contextWindowTokens: 8192,
+    contextWindowTokens: 32_768 + 32_768,
     description:
-      'Spark Ultra 是星火大模型系列中最为强大的版本，在升级联网搜索链路同时，提升对文本内容的理解和总结能力。它是用于提升办公生产力和准确响应需求的全方位解决方案，是引领行业的智能产品。',
+      'Spark Ultra is the most powerful model in the Spark series, improving text understanding and summarization while upgrading web search. It is a comprehensive solution for boosting workplace productivity and accurate responses, positioning it as a leading intelligent product.',
     displayName: 'Spark 4.0 Ultra',
-    enabled: true,
     id: '4.0Ultra',
-    maxOutput: 8192,
+    maxOutput: 32_768,
     settings: {
       searchImpl: 'params',
     },

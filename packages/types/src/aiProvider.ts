@@ -31,6 +31,7 @@ export const AiProviderSDKEnum = {
   Ollama: 'ollama',
   Openai: 'openai',
   Qwen: 'qwen',
+  Replicate: 'replicate',
   Router: 'router',
   Volcengine: 'volcengine',
 } as const;
@@ -48,6 +49,7 @@ const AiProviderSdkTypes = [
   'cloudflare',
   'google',
   'huggingface',
+  'replicate',
   'router',
   'volcengine',
   'qwen',
@@ -247,7 +249,7 @@ export const UpdateAiProviderConfigSchema = z.object({
       z.string(),
       z.union([
         z.string().optional(),
-        z.record(z.string(), z.string()).optional(), // 支持嵌套对象，如 customHeaders
+        z.record(z.string(), z.string()).optional(), // Support nested objects, e.g. customHeaders
       ]),
     )
     .optional(),

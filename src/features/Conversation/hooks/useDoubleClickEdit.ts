@@ -1,14 +1,11 @@
-import { MouseEventHandler, use, useCallback } from 'react';
+import { type MouseEventHandler, useCallback } from 'react';
 
-import { useChatStore } from '@/store/chat';
-
-import { VirtuosoContext } from '../components/VirtualizedList/VirtuosoContext';
+import { useConversationStore } from '../store';
 
 interface UseDoubleClickEditProps {
   disableEditing?: boolean;
   error: any;
   id: string;
-  index: number;
   role: string;
 }
 
@@ -17,10 +14,8 @@ export const useDoubleClickEdit = ({
   role,
   error,
   id,
-  index,
 }: UseDoubleClickEditProps) => {
-  const [toggleMessageEditing] = useChatStore((s) => [s.toggleMessageEditing]);
-  const virtuosoRef = use(VirtuosoContext);
+  const toggleMessageEditing = useConversationStore((s) => s.toggleMessageEditing);
 
   return useCallback<MouseEventHandler<HTMLDivElement>>(
     (e) => {
@@ -34,9 +29,7 @@ export const useDoubleClickEdit = ({
         return;
 
       toggleMessageEditing(id, true);
-
-      virtuosoRef?.current?.scrollIntoView({ align: 'start', behavior: 'auto', index });
     },
-    [role, disableEditing],
+    [role, disableEditing, toggleMessageEditing, id],
   );
 };

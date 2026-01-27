@@ -5,8 +5,11 @@ import { ThreadItem, threads } from '../schemas';
 import { LobeChatDatabase } from '../type';
 
 const queryColumns = {
+  agentId: threads.agentId,
   createdAt: threads.createdAt,
+  groupId: threads.groupId,
   id: threads.id,
+  metadata: threads.metadata,
   parentThreadId: threads.parentThreadId,
   sourceMessageId: threads.sourceMessageId,
   status: threads.status,
@@ -29,7 +32,7 @@ export class ThreadModel {
     // @ts-ignore
     const [result] = await this.db
       .insert(threads)
-      .values({ ...params, status: ThreadStatus.Active, userId: this.userId })
+      .values({ status: ThreadStatus.Active, ...params, userId: this.userId })
       .onConflictDoNothing()
       .returning();
 

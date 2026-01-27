@@ -1,3 +1,15 @@
+---
+title: Lobe Chat API Client-Server Interaction Logic
+description: >-
+  Explore the client-server interaction logic of Lobe Chat API, including event
+  sequences.
+tags:
+  - Lobe Chat API
+  - Client-Server Interaction
+  - Event Sequences
+  - API Logic
+---
+
 # Lobe Chat API Client-Server Interaction Logic
 
 This document explains the implementation logic of Lobe Chat API in client-server interactions, including event sequences and core components involved.
@@ -223,7 +235,6 @@ AgentRuntime is a core abstraction layer in Lobe Chat that encapsulates a unifie
      chat(payload: ChatStreamPayload, options?: ChatCompetitionOptions): Promise<Response>;
      embeddings?(payload: EmbeddingsPayload, options?: EmbeddingsOptions): Promise<Embeddings[]>;
      models?(): Promise<any>;
-     textToImage?: (payload: TextToImagePayload) => Promise<string[]>;
      textToSpeech?: (
        payload: TextToSpeechPayload,
        options?: TextToSpeechOptions,
@@ -248,7 +259,7 @@ AgentRuntime is a core abstraction layer in Lobe Chat that encapsulates a unifie
             baseURL: OPENROUTER_BASE_URL,
             defaultHeaders: {
               'HTTP-Referer': 'https://github.com/lobehub/lobe-chat',
-              'X-Title': 'LobeChat',
+              'X-Title': 'LobeHub',
             },
           });
           this.baseURL = OPENROUTER_BASE_URL;

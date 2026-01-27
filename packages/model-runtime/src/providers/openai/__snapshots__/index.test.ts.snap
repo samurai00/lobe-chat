@@ -4,7 +4,7 @@ exports[`LobeOpenAI > models > should get models 1`] = `
 [
   {
     "contextWindowTokens": undefined,
-    "description": "通用语音识别模型，支持多语言语音识别、语音翻译和语言识别。",
+    "description": "A general speech recognition model supporting multilingual ASR, speech translation, and language identification.",
     "displayName": "Whisper",
     "enabled": false,
     "functionCall": false,
@@ -38,7 +38,7 @@ exports[`LobeOpenAI > models > should get models 1`] = `
   },
   {
     "contextWindowTokens": 16384,
-    "description": "GPT 3.5 Turbo，适用于各种文本生成和理解任务，Currently points to gpt-3.5-turbo-0125",
+    "description": "GPT 3.5 Turbo for text generation and understanding; currently points to gpt-3.5-turbo-0125.",
     "displayName": "GPT-3.5 Turbo",
     "enabled": false,
     "functionCall": true,
@@ -55,7 +55,7 @@ exports[`LobeOpenAI > models > should get models 1`] = `
   },
   {
     "contextWindowTokens": undefined,
-    "description": "第二代 DALL·E 模型，支持更真实、准确的图像生成，分辨率是第一代的4倍",
+    "description": "Second-generation DALL·E model with more realistic, accurate image generation and 4× the resolution of the first generation.",
     "displayName": "DALL·E 2",
     "enabled": false,
     "functionCall": false,
@@ -122,7 +122,7 @@ exports[`LobeOpenAI > models > should get models 1`] = `
   },
   {
     "contextWindowTokens": undefined,
-    "description": "最新的文本转语音模型，针对质量进行优化",
+    "description": "The latest text-to-speech model optimized for quality.",
     "displayName": "TTS-1 HD",
     "enabled": false,
     "functionCall": false,
@@ -156,7 +156,7 @@ exports[`LobeOpenAI > models > should get models 1`] = `
   },
   {
     "contextWindowTokens": 8192,
-    "description": "最强大的向量化模型，适用于英文和非英文任务",
+    "description": "The most capable embedding model for English and non-English tasks.",
     "displayName": "Text Embedding 3 Large",
     "enabled": false,
     "functionCall": false,
@@ -207,7 +207,7 @@ exports[`LobeOpenAI > models > should get models 1`] = `
   },
   {
     "contextWindowTokens": 128000,
-    "description": "最新的 GPT-4 Turbo 模型具备视觉功能。现在，视觉请求可以使用 JSON 模式和函数调用。 GPT-4 Turbo 是一个增强版本，为多模态任务提供成本效益高的支持。它在准确性和效率之间找到平衡，适合需要进行实时交互的应用程序场景。",
+    "description": "The latest GPT-4 Turbo adds vision. Visual requests support JSON mode and function calling. It is a cost-effective multimodal model that balances accuracy and efficiency for real-time applications.",
     "displayName": "GPT-4 Turbo Preview 0125",
     "enabled": false,
     "functionCall": true,
@@ -224,7 +224,7 @@ exports[`LobeOpenAI > models > should get models 1`] = `
   },
   {
     "contextWindowTokens": 128000,
-    "description": "最新的 GPT-4 Turbo 模型具备视觉功能。现在，视觉请求可以使用 JSON 模式和函数调用。 GPT-4 Turbo 是一个增强版本，为多模态任务提供成本效益高的支持。它在准确性和效率之间找到平衡，适合需要进行实时交互的应用程序场景。",
+    "description": "The latest GPT-4 Turbo adds vision. Visual requests support JSON mode and function calling. It is a cost-effective multimodal model that balances accuracy and efficiency for real-time applications.",
     "displayName": "GPT-4 Turbo Preview",
     "enabled": false,
     "functionCall": true,
@@ -241,7 +241,7 @@ exports[`LobeOpenAI > models > should get models 1`] = `
   },
   {
     "contextWindowTokens": 4096,
-    "description": "GPT 3.5 Turbo，适用于各种文本生成和理解任务，对指令遵循的优化",
+    "description": "GPT 3.5 Turbo for text generation and understanding tasks, optimized for instruction following.",
     "displayName": "GPT-3.5 Turbo Instruct",
     "enabled": false,
     "functionCall": false,
@@ -292,7 +292,7 @@ exports[`LobeOpenAI > models > should get models 1`] = `
   },
   {
     "contextWindowTokens": undefined,
-    "description": "最新的文本转语音模型，针对实时场景优化速度",
+    "description": "The latest text-to-speech model optimized for real-time speed.",
     "displayName": "TTS-1",
     "enabled": false,
     "functionCall": false,
@@ -309,9 +309,9 @@ exports[`LobeOpenAI > models > should get models 1`] = `
   },
   {
     "contextWindowTokens": undefined,
-    "description": "最新的 DALL·E 模型，于2023年11月发布。支持更真实、准确的图像生成，具有更强的细节表现力",
+    "description": "The latest DALL·E model, released in November 2023, supports more realistic, accurate image generation with stronger detail.",
     "displayName": "DALL·E 3",
-    "enabled": false,
+    "enabled": true,
     "functionCall": false,
     "id": "dall-e-3",
     "imageOutput": false,
@@ -346,7 +346,7 @@ exports[`LobeOpenAI > models > should get models 1`] = `
   },
   {
     "contextWindowTokens": 16384,
-    "description": "GPT 3.5 Turbo，适用于各种文本生成和理解任务，Currently points to gpt-3.5-turbo-0125",
+    "description": "GPT 3.5 Turbo for text generation and understanding; currently points to gpt-3.5-turbo-0125.",
     "displayName": "GPT-3.5 Turbo 1106",
     "enabled": false,
     "functionCall": true,
@@ -363,7 +363,7 @@ exports[`LobeOpenAI > models > should get models 1`] = `
   },
   {
     "contextWindowTokens": 128000,
-    "description": "最新的 GPT-4 Turbo 模型具备视觉功能。现在，视觉请求可以使用 JSON 模式和函数调用。 GPT-4 Turbo 是一个增强版本，为多模态任务提供成本效益高的支持。它在准确性和效率之间找到平衡，适合需要进行实时交互的应用程序场景。",
+    "description": "The latest GPT-4 Turbo adds vision. Visual requests support JSON mode and function calling. It is a cost-effective multimodal model that balances accuracy and efficiency for real-time applications.",
     "displayName": "GPT-4 Turbo Preview 1106",
     "enabled": false,
     "functionCall": true,
@@ -414,7 +414,7 @@ exports[`LobeOpenAI > models > should get models 1`] = `
   },
   {
     "contextWindowTokens": 128000,
-    "description": "GPT-4 视觉预览版，专为图像分析和处理任务设计。",
+    "description": "GPT-4 Vision preview, designed for image analysis and processing tasks.",
     "displayName": "GPT 4 Turbo with Vision Preview",
     "enabled": false,
     "functionCall": false,
@@ -431,7 +431,7 @@ exports[`LobeOpenAI > models > should get models 1`] = `
   },
   {
     "contextWindowTokens": 8192,
-    "description": "高效且经济的新一代 Embedding 模型，适用于知识检索、RAG 应用等场景",
+    "description": "An efficient, cost-effective next-generation embedding model for retrieval and RAG scenarios.",
     "displayName": "Text Embedding 3 Small",
     "enabled": false,
     "functionCall": false,
@@ -448,7 +448,7 @@ exports[`LobeOpenAI > models > should get models 1`] = `
   },
   {
     "contextWindowTokens": 8192,
-    "description": "GPT-4 提供了一个更大的上下文窗口，能够处理更长的文本输入，适用于需要广泛信息整合和数据分析的场景。",
+    "description": "GPT-4 provides a larger context window to handle longer inputs, suitable for broad information synthesis and data analysis.",
     "displayName": "GPT-4",
     "enabled": false,
     "functionCall": true,
@@ -482,7 +482,7 @@ exports[`LobeOpenAI > models > should get models 1`] = `
   },
   {
     "contextWindowTokens": 16384,
-    "description": "GPT 3.5 Turbo，适用于各种文本生成和理解任务，Currently points to gpt-3.5-turbo-0125",
+    "description": "GPT 3.5 Turbo for text generation and understanding; currently points to gpt-3.5-turbo-0125.",
     "displayName": "GPT-3.5 Turbo 0125",
     "enabled": false,
     "functionCall": true,
@@ -499,7 +499,7 @@ exports[`LobeOpenAI > models > should get models 1`] = `
   },
   {
     "contextWindowTokens": 8192,
-    "description": "GPT-4 提供了一个更大的上下文窗口，能够处理更长的文本输入，适用于需要广泛信息整合和数据分析的场景。",
+    "description": "GPT-4 provides a larger context window to handle longer inputs, suitable for broad information synthesis and data analysis.",
     "displayName": "GPT-4 0613",
     "enabled": false,
     "functionCall": true,

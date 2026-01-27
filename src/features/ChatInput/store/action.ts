@@ -1,6 +1,6 @@
-import { StateCreator } from 'zustand/vanilla';
+import { type StateCreator } from 'zustand/vanilla';
 
-import { PublicState, State, initialState } from './initialState';
+import { type PublicState, type State, initialState } from './initialState';
 
 export interface Action {
   getJSONState: () => any;
@@ -14,8 +14,6 @@ export interface Action {
 }
 
 export type Store = Action & State;
-
-// const t = setNamespace('ChatInput');
 
 type CreateStore = (
   initState?: Partial<PublicState>,

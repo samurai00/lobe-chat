@@ -1,14 +1,15 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
 import {
-  PropsWithChildren,
+  type PropsWithChildren,
   createContext,
   useContext,
   useEffect,
   useState,
   useTransition,
 } from 'react';
+
+import { usePathname } from '@/libs/router/navigation';
 
 import { getCacheFiles } from './getCacheEntries';
 import type { NextCacheFileData } from './schema';

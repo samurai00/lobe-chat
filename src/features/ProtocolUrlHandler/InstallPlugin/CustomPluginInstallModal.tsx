@@ -1,21 +1,20 @@
 'use client';
 
-import { Alert, Block, Modal, Text } from '@lobehub/ui';
+import { Alert, Block, Flexbox, Modal, Text } from '@lobehub/ui';
 import { App } from 'antd';
 import { memo, useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Flexbox } from 'react-layout-kit';
 
 import PluginAvatar from '@/components/Plugins/PluginAvatar';
 import PluginTag from '@/components/Plugins/PluginTag';
 import { useAgentStore } from '@/store/agent';
 import { useToolStore } from '@/store/tool';
 import { mcpStoreSelectors } from '@/store/tool/selectors';
-import { McpConnectionParams } from '@/types/plugins';
-import { LobeToolCustomPlugin } from '@/types/tool/plugin';
+import { type McpConnectionParams } from '@/types/plugins';
+import { type LobeToolCustomPlugin } from '@/types/tool/plugin';
 
 import ConfigDisplay from './ConfigDisplay';
-import { McpInstallRequest, TRUSTED_MARKETPLACES, TrustedMarketplaceId } from './types';
+import { type McpInstallRequest, TRUSTED_MARKETPLACES, type TrustedMarketplaceId } from './types';
 
 interface CustomPluginInstallModalProps {
   installRequest: McpInstallRequest | null;
@@ -80,7 +79,6 @@ const CustomPluginInstallModal = memo<CustomPluginInstallModalProps>(
             description: schema.description,
           },
         };
-        console.log('testParams:', testParams);
 
         const testResult = await testMcpConnection(testParams);
 
@@ -141,8 +139,8 @@ const CustomPluginInstallModal = memo<CustomPluginInstallModalProps>(
       if (!isMarketplace) {
         return (
           <Alert
-            message={t('protocolInstall.custom.security.description')}
             showIcon
+            title={t('protocolInstall.custom.security.description')}
             type="warning"
             variant={'borderless'}
           />
@@ -152,15 +150,15 @@ const CustomPluginInstallModal = memo<CustomPluginInstallModalProps>(
       // marketplace 类型
       return marketplace ? (
         <Alert
-          message={t('protocolInstall.marketplace.trustedBy', { name: marketplace.name })}
           showIcon
+          title={t('protocolInstall.marketplace.trustedBy', { name: marketplace.name })}
           type="success"
           variant={'borderless'}
         />
       ) : (
         <Alert
-          message={t('protocolInstall.marketplace.unverified.warning')}
           showIcon
+          title={t('protocolInstall.marketplace.unverified.warning')}
           type="warning"
           variant={'borderless'}
         />
@@ -210,8 +208,8 @@ const CustomPluginInstallModal = memo<CustomPluginInstallModalProps>(
               <Alert
                 closable
                 description={testState.error}
-                message={t('protocolInstall.messages.connectionTestFailed')}
                 showIcon
+                title={t('protocolInstall.messages.connectionTestFailed')}
                 type="error"
                 variant={'filled'}
               />

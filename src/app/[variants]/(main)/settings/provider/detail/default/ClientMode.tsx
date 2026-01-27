@@ -1,7 +1,7 @@
 'use client';
 
+import { Flexbox } from '@lobehub/ui';
 import { memo } from 'react';
-import { Flexbox } from 'react-layout-kit';
 
 import Loading from '@/components/Loading/BrandTextLoading';
 import { useClientDataSWR } from '@/libs/swr';
@@ -15,11 +15,11 @@ const ClientMode = memo<{ id: string }>(({ id }) => {
   const useFetchAiProviderItem = useAiInfraStore((s) => s.useFetchAiProviderItem);
   useFetchAiProviderItem(id);
 
-  const { data, isLoading } = useClientDataSWR('get-client-provider', () =>
+  const { data, isLoading } = useClientDataSWR(`get-client-provider-${id}`, () =>
     aiProviderService.getAiProviderById(id),
   );
 
-  if (isLoading || !data || !data.id) return <Loading />;
+  if (isLoading || !data || !data.id) return <Loading debugId="Provider > ClientMode" />;
 
   return (
     <Flexbox gap={24} paddingBlock={8}>

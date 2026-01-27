@@ -1,10 +1,8 @@
-import { UIChatMessage } from '@lobechat/types';
-import { Modal, Segmented, Tabs } from '@lobehub/ui';
+import { type UIChatMessage } from '@lobechat/types';
+import { Flexbox, Modal, Segmented, Tabs } from '@lobehub/ui';
 import { memo, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Flexbox } from 'react-layout-kit';
 
-import { isServerMode } from '@/const/version';
 import SharePdf from '@/features/ShareModal/SharePdf';
 import { useIsMobile } from '@/hooks/useIsMobile';
 
@@ -17,7 +15,7 @@ enum Tab {
   Text = 'text',
 }
 
-interface ShareModalProps {
+export interface ShareModalProps {
   message: UIChatMessage;
   onCancel: () => void;
   open: boolean;
@@ -41,16 +39,12 @@ const ShareModal = memo<ShareModalProps>(({ onCancel, open, message }) => {
         key: Tab.Text,
         label: t('shareModal.text'),
       },
-    ];
-
-    // Only add PDF tab in server mode
-    if (isServerMode) {
-      items.push({
+      {
         children: <SharePdf message={message} />,
         key: Tab.PDF,
         label: t('shareModal.pdf'),
-      });
-    }
+      },
+    ];
 
     return items;
   }, [isMobile, message, uniqueId, t]);

@@ -1,38 +1,139 @@
-import { LobeChatPluginManifest } from '@lobehub/chat-plugin-sdk';
-import { PluginItem, PluginListResponse } from '@lobehub/market-sdk';
-import { TRPCClientError } from '@trpc/client';
+import { CURRENT_VERSION, isDesktop } from '@lobechat/const';
+import { type LobeChatPluginManifest } from '@lobehub/chat-plugin-sdk';
+import { type PluginItem, type PluginListResponse } from '@lobehub/market-sdk';
+import { type TRPCClientError } from '@trpc/client';
+import debug from 'debug';
+import { uniqBy } from 'es-toolkit/compat';
 import { produce } from 'immer';
-import { uniqBy } from 'lodash-es';
 import { gt, valid } from 'semver';
-import useSWR, { SWRResponse } from 'swr';
-import { StateCreator } from 'zustand/vanilla';
+import useSWR, { type SWRResponse } from 'swr';
+import { type StateCreator } from 'zustand/vanilla';
 
-import { CURRENT_VERSION } from '@/const/version';
-import { MCPErrorData } from '@/libs/mcp/types';
+import { type MCPErrorData, parseStdioErrorMessage } from '@/libs/mcp/types';
 import { discoverService } from '@/services/discover';
 import { mcpService } from '@/services/mcp';
 import { pluginService } from '@/services/plugin';
 import { globalHelpers } from '@/store/global/helpers';
 import { mcpStoreSelectors } from '@/store/tool/selectors';
+import { McpConnectionType } from '@/types/discover';
 import {
-  CheckMcpInstallResult,
-  MCPErrorInfo,
-  MCPInstallProgress,
+  type CheckMcpInstallResult,
+  type MCPErrorInfo,
+  type MCPInstallProgress,
   MCPInstallStep,
-  MCPPluginListParams,
-  McpConnectionParams,
+  type MCPPluginListParams,
+  type McpConnectionParams,
 } from '@/types/plugins';
 import { sleep } from '@/utils/sleep';
 import { setNamespace } from '@/utils/storeDebug';
 
-import { ToolStore } from '../../store';
-import { MCPStoreState } from './initialState';
+import { type ToolStore } from '../../store';
+import { type MCPStoreState } from './initialState';
+
+const log = debug('lobe-mcp:store:action');
 
 const n = setNamespace('mcpStore');
 
-// 测试连接结果类型
+const doesConfigSchemaRequireInput = (configSchema?: any) => {
+  if (!configSchema) return false;
+
+  const hasRequiredArray =
+    Array.isArray(configSchema.required) && configSchema.required.some(Boolean);
+
+  const hasRequiredProperty =
+    !!configSchema.properties &&
+    Object.values(configSchema.properties).some(
+      (property: any) => property && property.required === true,
+    );
+
+  return hasRequiredArray || hasRequiredProperty;
+};
+
+const toNonEmptyStringRecord = (input?: Record<string, any>) => {
+  if (!input) return undefined;
+
+  const entries = Object.entries(input).filter(
+    ([, value]) => value !== undefined && value !== null,
+  );
+
+  if (entries.length === 0) return undefined;
+
+  return entries.reduce<Record<string, string>>((acc, [key, value]) => {
+    acc[key] = typeof value === 'string' ? value : String(value);
+
+    return acc;
+  }, {});
+};
+
+/**
+ * Build manifest for cloud MCP connection from market data
+ */
+const buildCloudMcpManifest = (params: {
+  data: any;
+  plugin: { description?: string; icon?: string; identifier: string };
+}): LobeChatPluginManifest => {
+  const { data, plugin } = params;
+
+  log('Using cloud connection, building manifest from market data');
+
+  // Get tools (MCP format) or api (LobeChat format) from data
+  const mcpTools = data.tools;
+  const lobeChatApi = data.api;
+
+  // If MCP format tools, need to convert to LobeChat api format
+  // MCP: { name, description, inputSchema }
+  // LobeChat: { name, description, parameters }
+  let apiArray: any[] = [];
+
+  if (lobeChatApi) {
+    // Already in LobeChat format, use directly
+    apiArray = lobeChatApi;
+    log('[Cloud MCP] Using existing LobeChat API format');
+  } else if (mcpTools && Array.isArray(mcpTools)) {
+    // Convert MCP tools format to LobeChat api format
+    apiArray = mcpTools.map((tool: any) => ({
+      description: tool.description || '',
+      name: tool.name,
+      parameters: tool.inputSchema || {},
+    }));
+    log('[Cloud MCP] Converted %d MCP tools to LobeChat API format', apiArray.length);
+  } else {
+    console.warn('[Cloud MCP] No tools or api found in manifest data');
+  }
+
+  // Build complete manifest
+  const manifest: LobeChatPluginManifest = {
+    api: apiArray,
+    author: data.author?.name || data.author || '',
+    createAt: data.createdAt || new Date().toISOString(),
+    homepage: data.homepage || '',
+    identifier: plugin.identifier,
+    manifest: data.manifestUrl || '',
+    meta: {
+      avatar: data.icon || plugin.icon,
+      description: plugin.description || data.description,
+      tags: data.tags || [],
+      title: data.name || plugin.identifier,
+    },
+    name: data.name || plugin.identifier,
+    type: 'mcp',
+    version: data.version,
+  } as unknown as LobeChatPluginManifest;
+
+  log('[Cloud MCP] Final manifest built:', {
+    apiCount: manifest.api?.length,
+    identifier: manifest.identifier,
+    version: manifest.version,
+  });
+
+  return manifest;
+};
+
+// Test connection result type
 export interface TestMcpConnectionResult {
   error?: string;
+  /** STDIO process output logs for debugging */
+  errorLog?: string;
   manifest?: LobeChatPluginManifest;
   success: boolean;
 }
@@ -46,7 +147,7 @@ export interface PluginMCPStoreAction {
   ) => Promise<boolean | undefined>;
   loadMoreMCPPlugins: () => void;
   resetMCPPluginList: (keywords?: string) => void;
-  // 测试连接相关方法
+  // Test connection related methods
   testMcpConnection: (params: McpConnectionParams) => Promise<TestMcpConnectionResult>;
   uninstallMCPPlugin: (identifier: string) => Promise<void>;
   updateMCPInstallProgress: (identifier: string, progress: MCPInstallProgress | undefined) => void;
@@ -60,12 +161,12 @@ export const createMCPPluginStoreSlice: StateCreator<
   PluginMCPStoreAction
 > = (set, get) => ({
   cancelInstallMCPPlugin: async (identifier) => {
-    // 获取并取消AbortController
+    // Get and cancel AbortController
     const abortController = get().mcpInstallAbortControllers[identifier];
     if (abortController) {
       abortController.abort();
 
-      // 清理AbortController存储
+      // Clean up AbortController storage
       set(
         produce((draft: MCPStoreState) => {
           delete draft.mcpInstallAbortControllers[identifier];
@@ -75,18 +176,18 @@ export const createMCPPluginStoreSlice: StateCreator<
       );
     }
 
-    // 清理安装进度和加载状态
+    // Clean up installation progress and loading state
     get().updateMCPInstallProgress(identifier, undefined);
     get().updateInstallLoadingState(identifier, undefined);
   },
 
-  // 取消 MCP 连接测试
+  // Cancel MCP connection test
   cancelMcpConnectionTest: (identifier) => {
     const abortController = get().mcpTestAbortControllers[identifier];
     if (abortController) {
       abortController.abort();
 
-      // 清理状态
+      // Clean up state
       set(
         produce((draft: MCPStoreState) => {
           draft.mcpTestLoading[identifier] = false;
@@ -101,6 +202,7 @@ export const createMCPPluginStoreSlice: StateCreator<
 
   installMCPPlugin: async (identifier, options = {}) => {
     const { resume = false, config, skipDepsCheck } = options;
+    const normalizedConfig = toNonEmptyStringRecord(config);
     let plugin = mcpStoreSelectors.getPluginById(identifier)(get());
 
     if (!plugin || !plugin.manifestUrl) {
@@ -112,12 +214,16 @@ export const createMCPPluginStoreSlice: StateCreator<
 
     if (!plugin) return;
 
+    // Extract haveCloudEndpoint after plugin is loaded
+    // @ts-expect-error
+    const { haveCloudEndpoint } = plugin || {};
+
     const { updateInstallLoadingState, refreshPlugins, updateMCPInstallProgress } = get();
 
-    // 创建AbortController用于取消安装
+    // Create AbortController for canceling installation
     const abortController = new AbortController();
 
-    // 存储AbortController
+    // Store AbortController
     set(
       produce((draft: MCPStoreState) => {
         draft.mcpInstallAbortControllers[identifier] = abortController;
@@ -126,7 +232,7 @@ export const createMCPPluginStoreSlice: StateCreator<
       n('installMCPPlugin/setController'),
     );
 
-    // 记录安装开始时间
+    // Record installation start time
     const installStartTime = Date.now();
 
     let data: any;
@@ -135,13 +241,13 @@ export const createMCPPluginStoreSlice: StateCreator<
     const userAgent = `LobeHub Desktop/${CURRENT_VERSION}`;
 
     try {
-      // 检查是否已被取消
+      // Check if already cancelled
       if (abortController.signal.aborted) {
         return;
       }
 
       if (resume) {
-        // 恢复模式：从存储中获取之前的信息
+        // Resume mode: get previous info from storage
         const configInfo = get().mcpInstallProgress[identifier];
         if (!configInfo) {
           console.error('No config info found for resume');
@@ -149,16 +255,12 @@ export const createMCPPluginStoreSlice: StateCreator<
         }
 
         data = configInfo.manifest;
-        connection = {
-          ...configInfo.connection,
-          config, // 合并用户提供的配置
-        };
+        connection = configInfo.connection ? { ...configInfo.connection } : undefined;
         result = configInfo.checkResult;
-        connection = configInfo.connection;
       } else {
-        // 正常模式：从头开始安装
+        // Normal mode: start installation from scratch
 
-        // 步骤 1: 获取插件清单
+        // Step 1: Fetch plugin manifest
         updateMCPInstallProgress(identifier, {
           progress: 15,
           step: MCPInstallStep.FETCHING_MANIFEST,
@@ -166,7 +268,7 @@ export const createMCPPluginStoreSlice: StateCreator<
 
         updateInstallLoadingState(identifier, true);
 
-        // 检查是否已被取消
+        // Check if already cancelled
         if (abortController.signal.aborted) {
           return;
         }
@@ -175,71 +277,199 @@ export const createMCPPluginStoreSlice: StateCreator<
           install: true,
         });
 
-        // 步骤 2: 检查安装环境
-        updateMCPInstallProgress(identifier, {
-          progress: 30,
-          step: MCPInstallStep.CHECKING_INSTALLATION,
-        });
+        const deploymentOptions: any[] = Array.isArray(data.deploymentOptions)
+          ? data.deploymentOptions
+          : [];
 
-        // 检查是否已被取消
-        if (abortController.signal.aborted) {
-          return;
-        }
+        const httpOption =
+          deploymentOptions.find(
+            (option) => option?.connection?.url && option?.connection?.type === 'http',
+          ) ||
+          deploymentOptions.find((option) => option?.connection?.url && !option?.connection?.type);
 
-        result = await mcpService.checkInstallation(data, abortController.signal);
+        // Find stdio type deployment option
+        const stdioOption = deploymentOptions.find(
+          (option) =>
+            option?.connection?.type === 'stdio' ||
+            (!option?.connection?.type && !option?.connection?.url),
+        );
 
-        if (!result.success) {
-          updateMCPInstallProgress(identifier, undefined);
-          return;
-        }
+        // Check if cloudEndPoint is available: stdio type + haveCloudEndpoint exists
+        // Both desktop and web should use cloud endpoint if available
+        const hasCloudEndpoint = stdioOption && haveCloudEndpoint;
 
-        // 步骤 3: 检查系统依赖是否满足
-        if (!skipDepsCheck && !result.allDependenciesMet) {
-          // 依赖不满足，暂停安装流程并显示依赖安装引导
-          updateMCPInstallProgress(identifier, {
-            connection: result.connection,
-            manifest: data,
-            progress: 40,
-            step: MCPInstallStep.DEPENDENCIES_REQUIRED,
-            systemDependencies: result.systemDependencies,
+        // Prioritize endpoint (http/cloud) over stdio in all environments
+        // Desktop: endpoint > stdio
+        // Web: endpoint only (stdio not supported)
+        let shouldUseHttpDeployment = !!httpOption;
+
+        if (hasCloudEndpoint) {
+          // Use cloudEndPoint, create cloud type connection
+          log('Using cloudEndPoint for stdio plugin: %s', haveCloudEndpoint);
+
+          connection = {
+            auth: stdioOption?.connection?.auth || { type: 'none' },
+            cloudEndPoint: haveCloudEndpoint,
+            headers: stdioOption?.connection?.headers,
+            type: 'cloud',
+          } as any;
+
+          log('Using cloud connection: %O', {
+            cloudEndPoint: haveCloudEndpoint,
+            type: connection.type,
           });
 
-          // 暂停安装流程，等待用户安装依赖
-          updateInstallLoadingState(identifier, undefined);
-          return false; // 返回 false 表示需要安装依赖
-        }
+          const configSchema = stdioOption?.connection?.configSchema;
+          const needsConfig = doesConfigSchemaRequireInput(configSchema);
 
-        // 步骤 4: 检查是否需要配置
-        if (result.needsConfig) {
-          // 需要配置，暂停安装流程
+          if (needsConfig && !normalizedConfig) {
+            updateMCPInstallProgress(identifier, {
+              configSchema,
+              connection,
+              manifest: data,
+              needsConfig: true,
+              progress: 50,
+              step: MCPInstallStep.CONFIGURATION_REQUIRED,
+            });
+
+            updateInstallLoadingState(identifier, undefined);
+            return false;
+          }
+        } else if (shouldUseHttpDeployment && httpOption) {
+          // HTTP type: skip system dependency check, use URL directly
+          log('HTTP MCP detected, skipping system dependency check');
+
+          connection = {
+            auth: httpOption.connection?.auth || { type: 'none' },
+            headers: httpOption.connection?.headers,
+            type: 'http',
+            url: httpOption.connection?.url,
+          };
+
+          log('Using HTTP connection: %O', { type: connection.type, url: connection.url });
+
+          const configSchema = httpOption.connection?.configSchema;
+          const needsConfig = doesConfigSchemaRequireInput(configSchema);
+
+          if (needsConfig && !normalizedConfig) {
+            updateMCPInstallProgress(identifier, {
+              configSchema,
+              connection,
+              manifest: data,
+              needsConfig: true,
+              progress: 50,
+              step: MCPInstallStep.CONFIGURATION_REQUIRED,
+            });
+
+            updateInstallLoadingState(identifier, undefined);
+            return false;
+          }
+        } else {
+          // stdio type: requires complete system dependency check process
+
+          // Step 2: Check installation environment
           updateMCPInstallProgress(identifier, {
-            checkResult: result,
-            configSchema: result.configSchema,
-            connection: result.connection,
-            manifest: data,
-            needsConfig: true,
-            progress: 50,
-            step: MCPInstallStep.CONFIGURATION_REQUIRED,
+            progress: 30,
+            step: MCPInstallStep.CHECKING_INSTALLATION,
           });
 
-          // 暂停安装流程，等待用户配置
-          updateInstallLoadingState(identifier, undefined);
-          return false; // 返回 false 表示需要配置
-        }
+          // Check if already cancelled
+          if (abortController.signal.aborted) {
+            return;
+          }
 
-        connection = result.connection;
+          result = await mcpService.checkInstallation(data, abortController.signal);
+
+          if (!result.success) {
+            updateMCPInstallProgress(identifier, undefined);
+            return;
+          }
+
+          // Step 3: Check if system dependencies are met
+          if (!skipDepsCheck && !result.allDependenciesMet) {
+            // Dependencies not met, pause installation and show dependency installation guide
+            updateMCPInstallProgress(identifier, {
+              connection: result.connection,
+              manifest: data,
+              progress: 40,
+              step: MCPInstallStep.DEPENDENCIES_REQUIRED,
+              systemDependencies: result.systemDependencies,
+            });
+
+            // Pause installation, wait for user to install dependencies
+            updateInstallLoadingState(identifier, undefined);
+            return false; // Return false to indicate dependencies need to be installed
+          }
+
+          // Step 4: Check if configuration is needed
+          if (result.needsConfig) {
+            // Configuration needed, pause installation
+            updateMCPInstallProgress(identifier, {
+              checkResult: result,
+              configSchema: result.configSchema,
+              connection: result.connection,
+              manifest: data,
+              needsConfig: true,
+              progress: 50,
+              step: MCPInstallStep.CONFIGURATION_REQUIRED,
+            });
+
+            // Pause installation, wait for user configuration
+            updateInstallLoadingState(identifier, undefined);
+            return false; // Return false to indicate configuration is needed
+          }
+
+          connection = result.connection;
+        }
       }
 
-      // 获取服务器清单逻辑
+      let mergedHttpHeaders: Record<string, string> | undefined;
+      let mergedStdioEnv: Record<string, string> | undefined;
+      let mergedCloudHeaders: Record<string, string> | undefined;
+
+      if (connection?.type === 'http') {
+        const baseHeaders = toNonEmptyStringRecord(connection.headers);
+
+        if (baseHeaders || normalizedConfig) {
+          mergedHttpHeaders = {
+            ...baseHeaders,
+            ...normalizedConfig,
+          };
+        }
+      }
+
+      if (connection?.type === 'stdio') {
+        const baseEnv = toNonEmptyStringRecord(connection.env);
+
+        if (baseEnv || normalizedConfig) {
+          mergedStdioEnv = {
+            ...baseEnv,
+            ...normalizedConfig,
+          };
+        }
+      }
+
+      if (connection?.type === 'cloud') {
+        const baseHeaders = toNonEmptyStringRecord(connection.headers);
+
+        if (baseHeaders || normalizedConfig) {
+          mergedCloudHeaders = {
+            ...baseHeaders,
+            ...normalizedConfig,
+          };
+        }
+      }
+
+      // Get server manifest logic
       updateInstallLoadingState(identifier, true);
 
-      // 步骤 5: 获取服务器清单
+      // Step 5: Get server manifest
       updateMCPInstallProgress(identifier, {
         progress: 70,
         step: MCPInstallStep.GETTING_SERVER_MANIFEST,
       });
 
-      // 检查是否已被取消
+      // Check if already cancelled
       if (abortController.signal.aborted) {
         return;
       }
@@ -251,8 +481,8 @@ export const createMCPPluginStoreSlice: StateCreator<
           {
             args: connection.args,
             command: connection.command!,
-            env: config,
-            name: identifier, // 将配置作为环境变量传递（resume 模式下）
+            env: mergedStdioEnv,
+            name: identifier, // Pass config as environment variables (in resume mode)
           },
           { avatar: plugin.icon, description: plugin.description, name: data.name },
           abortController.signal,
@@ -261,6 +491,8 @@ export const createMCPPluginStoreSlice: StateCreator<
       if (connection?.type === 'http') {
         manifest = await mcpService.getStreamableMcpServerManifest(
           {
+            auth: connection.auth,
+            headers: mergedHttpHeaders,
             identifier,
             metadata: {
               avatar: plugin.icon,
@@ -271,28 +503,32 @@ export const createMCPPluginStoreSlice: StateCreator<
           abortController.signal,
         );
       }
+      if (connection?.type === 'cloud') {
+        // Cloud type: build manifest directly from market data
+        manifest = buildCloudMcpManifest({ data, plugin });
+      }
 
       // set version
       if (manifest) {
-        // set Version - 使用 semver 比较版本号并取更大的值
+        // set Version - use semver to compare versions and take the larger value
         const dataVersion = data?.version;
         const manifestVersion = manifest.version;
 
         if (dataVersion && manifestVersion) {
-          // 如果两个版本都存在，比较并取更大的值
+          // If both versions exist, compare and take the larger value
           if (valid(dataVersion) && valid(manifestVersion)) {
             manifest.version = gt(dataVersion, manifestVersion) ? dataVersion : manifestVersion;
           } else {
-            // 如果版本号格式不正确，优先使用 dataVersion
+            // If version format is incorrect, prioritize dataVersion
             manifest.version = dataVersion;
           }
         } else {
-          // 如果只有一个版本存在，使用存在的版本
+          // If only one version exists, use the existing version
           manifest.version = dataVersion || manifestVersion;
         }
       }
 
-      // 检查是否已被取消
+      // Check if already cancelled
       if (abortController.signal.aborted) {
         return;
       }
@@ -302,41 +538,59 @@ export const createMCPPluginStoreSlice: StateCreator<
         return;
       }
 
-      // 步骤 6: 安装插件
+      // Step 6: Install plugin
       updateMCPInstallProgress(identifier, {
         progress: 90,
         step: MCPInstallStep.INSTALLING_PLUGIN,
       });
 
-      // 检查是否已被取消
+      // Check if already cancelled
       if (abortController.signal.aborted) {
         return;
       }
 
+      // Update connection object, write merged configuration
+      const finalConnection = { ...connection };
+      if (finalConnection.type === 'http' && mergedHttpHeaders) {
+        finalConnection.headers = mergedHttpHeaders;
+      }
+      if (finalConnection.type === 'stdio' && mergedStdioEnv) {
+        finalConnection.env = mergedStdioEnv;
+      }
+      if (finalConnection.type === 'cloud' && mergedCloudHeaders) {
+        finalConnection.headers = mergedCloudHeaders;
+      }
+
       await pluginService.installPlugin({
-        // 针对 mcp 先将 connection 信息存到 customParams 字段里
-        customParams: { mcp: connection },
+        // For mcp, store connection info in customParams field first
+        customParams: { mcp: finalConnection },
         identifier: plugin.identifier,
         manifest: manifest,
-        settings: config,
+        settings: normalizedConfig,
         type: 'plugin',
       });
 
-      // 检查是否已被取消
+      // Check if already cancelled
       if (abortController.signal.aborted) {
         return;
       }
 
       await refreshPlugins();
 
-      // 步骤 7: 完成安装
+      // Step 7: Complete installation
       updateMCPInstallProgress(identifier, {
         progress: 100,
         step: MCPInstallStep.COMPLETED,
       });
 
-      // 计算安装持续时间
+      // Calculate installation duration
       const installDurationMs = Date.now() - installStartTime;
+
+      discoverService.reportMcpEvent({
+        event: 'install',
+        identifier: plugin.identifier,
+        source: 'self',
+      });
 
       discoverService.reportMcpInstallResult({
         identifier: plugin.identifier,
@@ -347,19 +601,19 @@ export const createMCPPluginStoreSlice: StateCreator<
           resources: (manifest as any).resources,
           tools: (manifest as any).tools,
         },
-        platform: result!.platform,
+        platform: result?.platform || process.platform,
         success: true,
         userAgent,
         version: manifest.version || data.version,
       });
 
-      // 短暂显示完成状态后清除进度
+      // Show completed status briefly then clear progress
       await sleep(1000);
 
       updateMCPInstallProgress(identifier, undefined);
       updateInstallLoadingState(identifier, undefined);
 
-      // 清理AbortController
+      // Clean up AbortController
       set(
         produce((draft: MCPStoreState) => {
           delete draft.mcpInstallAbortControllers[identifier];
@@ -370,7 +624,7 @@ export const createMCPPluginStoreSlice: StateCreator<
 
       return true;
     } catch (e) {
-      // 如果是因为取消导致的错误，静默处理
+      // Silently handle errors caused by cancellation
       if (abortController.signal.aborted) {
         console.log('MCP plugin installation cancelled for:', identifier);
         return;
@@ -380,13 +634,13 @@ export const createMCPPluginStoreSlice: StateCreator<
 
       console.error('MCP plugin installation failed:', error);
 
-      // 计算安装持续时间（失败情况）
+      // Calculate installation duration (failure case)
       const installDurationMs = Date.now() - installStartTime;
 
-      // 处理结构化错误信息
+      // Handle structured error info
       let errorInfo: MCPErrorInfo;
 
-      // 如果是结构化的 MCPError
+      // If it's a structured MCPError
       if (!!error.data && 'errorData' in error.data) {
         const mcpError = error.data.errorData as MCPErrorData;
 
@@ -396,11 +650,23 @@ export const createMCPPluginStoreSlice: StateCreator<
           type: mcpError.type,
         };
       } else {
-        // 兜底处理普通错误
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        // Fallback handling for normal errors
+        const rawErrorMessage = error instanceof Error ? error.message : String(error);
+
+        // Parse STDIO error message to extract process output logs
+        const { originalMessage, errorLog } = parseStdioErrorMessage(rawErrorMessage);
+
         errorInfo = {
-          message: errorMessage,
+          message: originalMessage,
           metadata: {
+            errorLog,
+            params: connection
+              ? {
+                  args: connection.args,
+                  command: connection.command,
+                  type: connection.type,
+                }
+              : undefined,
             step: 'installation_error',
             timestamp: Date.now(),
           },
@@ -408,14 +674,14 @@ export const createMCPPluginStoreSlice: StateCreator<
         };
       }
 
-      // 设置错误状态，显示结构化错误信息
+      // Set error status, display structured error info
       updateMCPInstallProgress(identifier, {
         errorInfo,
         progress: 0,
         step: MCPInstallStep.ERROR,
       });
 
-      // 上报安装失败结果
+      // Report installation failure result
       discoverService.reportMcpInstallResult({
         errorCode: errorInfo.type,
         errorMessage: errorInfo.message,
@@ -423,7 +689,7 @@ export const createMCPPluginStoreSlice: StateCreator<
         installDurationMs,
         installParams: connection,
         metadata: errorInfo.metadata,
-        platform: result!.platform,
+        platform: result?.platform || process.platform,
         success: false,
         userAgent,
         version: data?.version,
@@ -431,7 +697,7 @@ export const createMCPPluginStoreSlice: StateCreator<
 
       updateInstallLoadingState(identifier, undefined);
 
-      // 清理AbortController
+      // Clean up AbortController
       set(
         produce((draft: MCPStoreState) => {
           delete draft.mcpInstallAbortControllers[identifier];
@@ -445,7 +711,7 @@ export const createMCPPluginStoreSlice: StateCreator<
   loadMoreMCPPlugins: () => {
     const { mcpPluginItems, totalCount, currentPage } = get();
 
-    // 检查是否还有更多数据可以加载
+    // Check if there's more data to load
     if (mcpPluginItems.length < (totalCount || 0)) {
       set(
         produce((draft: MCPStoreState) => {
@@ -463,20 +729,21 @@ export const createMCPPluginStoreSlice: StateCreator<
         draft.mcpPluginItems = [];
         draft.currentPage = 1;
         draft.mcpSearchKeywords = keywords;
+        draft.isMcpListInit = false;
       }),
       false,
       n('resetMCPPluginList'),
     );
   },
 
-  // 测试 MCP 连接
+  // Test MCP connection
   testMcpConnection: async (params) => {
     const { identifier, connection, metadata } = params;
 
-    // 创建 AbortController 用于取消测试
+    // Create AbortController for canceling test
     const abortController = new AbortController();
 
-    // 存储 AbortController 并设置加载状态
+    // Store AbortController and set loading state
     set(
       produce((draft: MCPStoreState) => {
         draft.mcpTestAbortControllers[identifier] = abortController;
@@ -524,12 +791,12 @@ export const createMCPPluginStoreSlice: StateCreator<
         throw new Error('Invalid MCP connection type');
       }
 
-      // 检查是否已被取消
+      // Check if already cancelled
       if (abortController.signal.aborted) {
         return { error: 'Test cancelled', success: false };
       }
 
-      // 清理状态
+      // Clean up state
       set(
         produce((draft: MCPStoreState) => {
           draft.mcpTestLoading[identifier] = false;
@@ -540,33 +807,48 @@ export const createMCPPluginStoreSlice: StateCreator<
         n('testMcpConnection/success'),
       );
 
+      discoverService.reportMcpEvent({
+        event: 'activate',
+        identifier: identifier,
+        source: 'self',
+      });
+
       return { manifest, success: true };
     } catch (error) {
-      // 如果是因为取消导致的错误，静默处理
+      // Silently handle errors caused by cancellation
       if (abortController.signal.aborted) {
         return { error: 'Test cancelled', success: false };
       }
 
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const rawErrorMessage = error instanceof Error ? error.message : String(error);
 
-      // 设置错误状态
+      // Parse STDIO error message to extract process output logs
+      const { originalMessage, errorLog } = parseStdioErrorMessage(rawErrorMessage);
+
+      // Set error state
       set(
         produce((draft: MCPStoreState) => {
           draft.mcpTestLoading[identifier] = false;
-          draft.mcpTestErrors[identifier] = errorMessage;
+          draft.mcpTestErrors[identifier] = originalMessage;
           delete draft.mcpTestAbortControllers[identifier];
         }),
         false,
         n('testMcpConnection/error'),
       );
 
-      return { error: errorMessage, success: false };
+      return { error: originalMessage, errorLog, success: false };
     }
   },
 
   uninstallMCPPlugin: async (identifier) => {
     await pluginService.uninstallPlugin(identifier);
     await get().refreshPlugins();
+
+    discoverService.reportMcpEvent({
+      event: 'uninstall',
+      identifier: identifier,
+      source: 'self',
+    });
   },
 
   updateMCPInstallProgress: (identifier, progress) => {
@@ -581,17 +863,32 @@ export const createMCPPluginStoreSlice: StateCreator<
 
   useFetchMCPPluginList: (params) => {
     const locale = globalHelpers.getCurrentLanguage();
+    const requestParams = isDesktop
+      ? params
+      : { ...params, connectionType: McpConnectionType.http };
+    const swrKeyParts = [
+      'useFetchMCPPluginList',
+      locale,
+      requestParams.page,
+      requestParams.pageSize,
+      requestParams.q,
+      requestParams.connectionType,
+    ];
+    const swrKey = swrKeyParts
+      .filter((part) => part !== undefined && part !== null && part !== '')
+      .join('-');
+    const page = requestParams.page ?? 1;
 
     return useSWR<PluginListResponse>(
-      ['useFetchMCPPluginList', locale, ...Object.values(params)].filter(Boolean).join('-'),
-      () => discoverService.getMCPPluginList(params),
+      swrKey,
+      () => discoverService.getMCPPluginList(requestParams),
       {
         onSuccess(data) {
           set(
             produce((draft: MCPStoreState) => {
               draft.searchLoading = false;
 
-              // 设置基础信息
+              // Set basic information
               if (!draft.isMcpListInit) {
                 draft.activeMCPIdentifier = data.items?.[0]?.identifier;
 
@@ -601,12 +898,12 @@ export const createMCPPluginStoreSlice: StateCreator<
                 draft.totalPages = data.totalPages;
               }
 
-              // 累积数据逻辑
-              if (params.page === 1) {
-                // 第一页，直接设置
+              // Accumulate data logic
+              if (page === 1) {
+                // First page, set directly
                 draft.mcpPluginItems = uniqBy(data.items, 'identifier');
               } else {
-                // 后续页面，累积数据
+                // Subsequent pages, accumulate data
                 draft.mcpPluginItems = uniqBy(
                   [...draft.mcpPluginItems, ...data.items],
                   'identifier',

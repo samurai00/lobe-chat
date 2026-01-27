@@ -6,11 +6,10 @@ import { createdAt } from './_helpers';
 import { agents, agentsFiles, agentsKnowledgeBases } from './agent';
 import { asyncTasks } from './asyncTask';
 import { chatGroups, chatGroupsAgents } from './chatGroup';
-import { documentChunks, documents } from './document';
-import { files, knowledgeBases } from './file';
+import { documents, files, knowledgeBases } from './file';
 import { generationBatches, generationTopics, generations } from './generation';
 import { messageGroups, messages, messagesFiles } from './message';
-import { chunks, unstructuredChunks } from './rag';
+import { chunks, documentChunks, unstructuredChunks } from './rag';
 import { sessionGroups, sessions } from './session';
 import { threads, topicDocuments, topics } from './topic';
 import { users } from './user';
@@ -32,6 +31,7 @@ export const agentsToSessions = pgTable(
     primaryKey({ columns: [t.agentId, t.sessionId] }),
     index('agents_to_sessions_session_id_idx').on(t.sessionId),
     index('agents_to_sessions_agent_id_idx').on(t.agentId),
+    index('agents_to_sessions_user_id_idx').on(t.userId),
   ],
 );
 
@@ -50,6 +50,9 @@ export const filesToSessions = pgTable(
   },
   (t) => ({
     pk: primaryKey({ columns: [t.fileId, t.sessionId] }),
+    userIdIdx: index('files_to_sessions_user_id_idx').on(t.userId),
+    fileIdIdx: index('files_to_sessions_file_id_idx').on(t.fileId),
+    sessionIdIdx: index('files_to_sessions_session_id_idx').on(t.sessionId),
   }),
 );
 
@@ -65,6 +68,9 @@ export const fileChunks = pgTable(
   },
   (t) => ({
     pk: primaryKey({ columns: [t.fileId, t.chunkId] }),
+    userIdIdx: index('file_chunks_user_id_idx').on(t.userId),
+    fileIdIdx: index('file_chunks_file_id_idx').on(t.fileId),
+    chunkIdIdx: index('file_chunks_chunk_id_idx').on(t.chunkId),
   }),
 );
 export type NewFileChunkItem = typeof fileChunks.$inferInsert;
@@ -221,7 +227,7 @@ export const filesRelations = relations(files, ({ many, one }) => ({
   }),
 }));
 
-// Document 相关关系定义
+// Document-related relation definitions
 export const documentsRelations = relations(documents, ({ one, many }) => ({
   file: one(files, {
     fields: [documents.fileId],
@@ -250,7 +256,7 @@ export const documentChunksRelations = relations(documentChunks, ({ one }) => ({
   }),
 }));
 
-// Generation 相关关系定义
+// Generation-related relation definitions
 export const generationTopicsRelations = relations(generationTopics, ({ one, many }) => ({
   user: one(users, {
     fields: [generationTopics.userId],
@@ -290,7 +296,7 @@ export const generationsRelations = relations(generations, ({ one }) => ({
   }),
 }));
 
-// Chat Groups 相关关系定义
+// Chat Groups-related relation definitions
 export const chatGroupsRelations = relations(chatGroups, ({ many, one }) => ({
   user: one(users, {
     fields: [chatGroups.userId],
@@ -314,7 +320,7 @@ export const chatGroupsAgentsRelations = relations(chatGroupsAgents, ({ one }) =
   }),
 }));
 
-// Message Groups 相关关系定义
+// Message Groups-related relation definitions
 export const messageGroupsRelations = relations(messageGroups, ({ many, one }) => ({
   user: one(users, {
     fields: [messageGroups.userId],

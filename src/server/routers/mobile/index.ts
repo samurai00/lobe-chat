@@ -8,10 +8,17 @@ import { agentRouter } from '../lambda/agent';
 import { aiChatRouter } from '../lambda/aiChat';
 import { aiModelRouter } from '../lambda/aiModel';
 import { aiProviderRouter } from '../lambda/aiProvider';
+import { chunkRouter } from '../lambda/chunk';
+import { configRouter } from '../lambda/config';
+import { documentRouter } from '../lambda/document';
+import { fileRouter } from '../lambda/file';
+import { knowledgeBaseRouter } from '../lambda/knowledgeBase';
 import { marketRouter } from '../lambda/market';
 import { messageRouter } from '../lambda/message';
 import { sessionRouter } from '../lambda/session';
 import { sessionGroupRouter } from '../lambda/sessionGroup';
+import { uploadRouter } from '../lambda/upload';
+import { userRouter } from '../lambda/user';
 import { topicRouter } from '../lambda/topic';
 
 export const mobileRouter = router({
@@ -19,12 +26,17 @@ export const mobileRouter = router({
   aiChat: aiChatRouter,
   aiModel: aiModelRouter,
   aiProvider: aiProviderRouter,
+  chunk: chunkRouter,
+  config: configRouter,
+  document: documentRouter,
+  file: fileRouter,
   healthcheck: publicProcedure.query(() => "i'm live!"),
+  knowledgeBase: knowledgeBaseRouter,
   market: marketRouter,
   message: messageRouter,
   session: sessionRouter,
   sessionGroup: sessionGroupRouter,
   topic: topicRouter,
+  upload: uploadRouter,
+  user: userRouter,
 });
-
-export type MobileRouter = typeof mobileRouter;
