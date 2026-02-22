@@ -1,5 +1,6 @@
 import debug from 'debug';
-import { type NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
 import { UAParser } from 'ua-parser-js';
 import urlJoin from 'url-join';
 
@@ -93,6 +94,7 @@ export function defineConfig() {
       '/group',
       '/community',
       '/resource',
+      '/eval',
       '/page',
       '/settings',
       '/image',
@@ -116,12 +118,10 @@ export function defineConfig() {
       ? urlJoin(url.origin, nextPathname)
       : nextPathname;
 
-    console.log(`[rewrite] ${url.pathname} -> ${nextURL}`);
-
     logDefault('URL rewrite: %O', {
       isLocalRewrite: appEnv.MIDDLEWARE_REWRITE_THROUGH_LOCAL,
-      nextPathname: nextPathname,
-      nextURL: nextURL,
+      nextPathname,
+      nextURL,
       originalPathname: url.pathname,
     });
 
@@ -165,9 +165,13 @@ export function defineConfig() {
     '/api/dev(.*)',
     '/webapi(.*)',
     '/trpc(.*)',
+    // version
+    '/api/version',
+    '/api/desktop/(.*)',
     // better auth
     '/signin',
     '/signup',
+    '/auth-error',
     '/verify-email',
     '/reset-password',
     // oauth
@@ -227,7 +231,6 @@ export function defineConfig() {
   };
 
   logDefault('Middleware configuration: %O', {
-    enableAuthProtection: appEnv.ENABLE_AUTH_PROTECTION,
     enableOIDC: authEnv.ENABLE_OIDC,
   });
 

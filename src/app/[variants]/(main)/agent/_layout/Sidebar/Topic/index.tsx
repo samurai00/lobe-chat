@@ -1,7 +1,7 @@
 'use client';
 
 import { AccordionItem, ContextMenuTrigger, Flexbox, Text } from '@lobehub/ui';
-import React, { Suspense, memo } from 'react';
+import React, { memo, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import NeuralNetworkLoading from '@/components/NeuralNetworkLoading';
@@ -22,19 +22,19 @@ const Topic = memo<TopicProps>(({ itemKey }) => {
   const { t } = useTranslation(['topic', 'common']);
   const [topicCount] = useChatStore((s) => [topicSelectors.currentTopicCount(s)]);
   const dropdownMenu = useTopicActionsDropdownMenu();
-  const { isRevalidating } = useFetchTopics({ excludeTriggers: ['cron'] });
+  const { isRevalidating } = useFetchTopics({ excludeTriggers: ['cron', 'eval'] });
 
   return (
     <AccordionItem
       action={<Actions />}
-      headerWrapper={(header) => (
-        <ContextMenuTrigger items={dropdownMenu}>{header}</ContextMenuTrigger>
-      )}
       itemKey={itemKey}
       paddingBlock={4}
       paddingInline={'8px 4px'}
+      headerWrapper={(header) => (
+        <ContextMenuTrigger items={dropdownMenu}>{header}</ContextMenuTrigger>
+      )}
       title={
-        <Flexbox align="center" gap={4} horizontal>
+        <Flexbox horizontal align="center" gap={4}>
           <Text ellipsis fontSize={12} type={'secondary'} weight={500}>
             {`${t('title')} ${topicCount > 0 ? topicCount : ''}`}
           </Text>

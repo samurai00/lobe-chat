@@ -1,31 +1,30 @@
 import { INBOX_SESSION_ID } from '@lobechat/const';
 import { parse } from '@lobechat/conversation-flow';
-import {
+import type {
   ChatFileItem,
   ChatImageItem,
-  ChatTTS,
   ChatToolPayload,
   ChatTranslate,
+  ChatTTS,
   ChatVideoItem,
   CreateMessageParams,
   DBMessageItem,
   IThreadType,
-  MessageGroupType,
   MessagePluginItem,
   ModelRankItem,
   NewMessageQueryParams,
   QueryMessageParams,
   TaskDetail,
   ThreadStatus,
-  ThreadType,
   UIChatMessage,
   UpdateMessageParams,
   UpdateMessageRAGParams,
 } from '@lobechat/types';
+import { MessageGroupType, ThreadType } from '@lobechat/types';
 import type { HeatmapsProps } from '@lobehub/charts';
 import dayjs from 'dayjs';
+import type { SQL } from 'drizzle-orm';
 import {
-  SQL,
   and,
   asc,
   count,
@@ -44,6 +43,7 @@ import {
 } from 'drizzle-orm';
 
 import { merge } from '@/utils/merge';
+import { sanitizeNullBytes } from '@/utils/sanitizeNullBytes';
 import { today } from '@/utils/time';
 
 import {
@@ -57,13 +57,13 @@ import {
   messagePlugins,
   messageQueries,
   messageQueryChunks,
-  messageTTS,
-  messageTranslates,
   messages,
   messagesFiles,
+  messageTranslates,
+  messageTTS,
   threads,
 } from '../schemas';
-import { LobeChatDatabase } from '../type';
+import type { LobeChatDatabase } from '../type';
 import { genEndDateWhere, genRangeWhere, genStartDateWhere, genWhere } from '../utils/genWhere';
 import { idGenerator } from '../utils/idGenerator';
 
@@ -202,7 +202,6 @@ export class MessageModel {
     // 1. get basic messages with joins, excluding messages that belong to MessageGroups
     const result = await this.db
       .select({
-        /* eslint-disable sort-keys-fix/sort-keys-fix*/
         id: messages.id,
         role: messages.role,
         content: messages.content,
@@ -249,7 +248,6 @@ export class MessageModel {
         ttsContentMd5: messageTTS.contentMd5,
         ttsFile: messageTTS.fileId,
         ttsVoice: messageTTS.voice,
-        /* eslint-enable */
       })
       .from(messages)
       .where(
@@ -465,8 +463,8 @@ export class MessageModel {
             })),
 
           extra: {
-            model: model,
-            provider: provider,
+            model,
+            provider,
             translate,
             tts: ttsId
               ? {
@@ -478,7 +476,7 @@ export class MessageModel {
           },
           fileList: fileList
             .filter((relation) => relation.messageId === item.id)
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
             .map<ChatFileItem>(({ id, url, size, fileType, name }) => ({
               content: documentsMap[id],
               fileType: fileType!,
@@ -489,7 +487,7 @@ export class MessageModel {
             })),
           imageList: imageList
             .filter((relation) => relation.messageId === item.id)
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
             .map<ChatImageItem>(({ id, url, name }) => ({ alt: name!, id, url })),
 
           model,
@@ -502,7 +500,7 @@ export class MessageModel {
           taskDetail: item.role === 'task' ? threadMap.get(item.id as string) : undefined,
           videoList: videoList
             .filter((relation) => relation.messageId === item.id)
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
             .map<ChatVideoItem>(({ id, url, name }) => ({ alt: name!, id, url })),
         } as unknown as UIChatMessage;
       },
@@ -542,7 +540,6 @@ export class MessageModel {
     // 1. Query messages with joins
     const result = await this.db
       .select({
-        /* eslint-disable sort-keys-fix/sort-keys-fix*/
         id: messages.id,
         role: messages.role,
         content: messages.content,
@@ -589,7 +586,6 @@ export class MessageModel {
         ttsContentMd5: messageTTS.contentMd5,
         ttsFile: messageTTS.fileId,
         ttsVoice: messageTTS.voice,
-        /* eslint-enable */
       })
       .from(messages)
       .where(and(eq(messages.userId, this.userId), inArray(messages.id, messageIds)))
@@ -659,7 +655,10 @@ export class MessageModel {
             })
             .from(threads)
             .where(
-              and(eq(threads.userId, this.userId), inArray(threads.sourceMessageId, taskMessageIds)),
+              and(
+                eq(threads.userId, this.userId),
+                inArray(threads.sourceMessageId, taskMessageIds),
+              ),
             )
         : Promise.resolve([]),
     ]);
@@ -736,8 +735,8 @@ export class MessageModel {
             })),
 
           extra: {
-            model: model,
-            provider: provider,
+            model,
+            provider,
             translate,
             tts: ttsId
               ? {
@@ -1259,11 +1258,11 @@ export class MessageModel {
       if (message.role === 'tool') {
         await trx.insert(messagePlugins).values({
           apiName: plugin?.apiName,
-          arguments: plugin?.arguments,
+          arguments: sanitizeNullBytes(plugin?.arguments),
           id,
           identifier: plugin?.identifier,
           intervention: pluginIntervention,
-          state: pluginState,
+          state: sanitizeNullBytes(pluginState),
           toolCallId: message.tool_call_id,
           type: plugin?.type,
           userId: this.userId,

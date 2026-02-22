@@ -1,14 +1,14 @@
-import type { AgentRuntimeContext, AgentState } from '@lobechat/agent-runtime';
-import type { LobeToolManifest } from '@lobechat/context-engine';
+import { type AgentRuntimeContext, type AgentState } from '@lobechat/agent-runtime';
+import { type LobeToolManifest } from '@lobechat/context-engine';
 import { type LobeChatDatabase } from '@lobechat/database';
-import type {
-  ExecAgentParams,
-  ExecAgentResult,
-  ExecGroupAgentParams,
-  ExecGroupAgentResult,
-  ExecSubAgentTaskParams,
-  ExecSubAgentTaskResult,
-  UserInterventionConfig,
+import {
+  type ExecAgentParams,
+  type ExecAgentResult,
+  type ExecGroupAgentParams,
+  type ExecGroupAgentResult,
+  type ExecSubAgentTaskParams,
+  type ExecSubAgentTaskResult,
+  type UserInterventionConfig,
 } from '@lobechat/types';
 import { ThreadStatus, ThreadType } from '@lobechat/types';
 import { nanoid } from '@lobechat/utils';
@@ -20,14 +20,11 @@ import { MessageModel } from '@/database/models/message';
 import { PluginModel } from '@/database/models/plugin';
 import { ThreadModel } from '@/database/models/thread';
 import { TopicModel } from '@/database/models/topic';
-import {
-  type ServerAgentToolsContext,
-  createServerAgentToolsEngine,
-  serverMessagesEngine,
-} from '@/server/modules/Mecha';
+import { type EvalContext, type ServerAgentToolsContext } from '@/server/modules/Mecha';
+import { createServerAgentToolsEngine } from '@/server/modules/Mecha';
 import { AgentService } from '@/server/services/agent';
 import { AgentRuntimeService } from '@/server/services/agentRuntime';
-import type { StepLifecycleCallbacks } from '@/server/services/agentRuntime/types';
+import { type StepLifecycleCallbacks } from '@/server/services/agentRuntime/types';
 import { KlavisService } from '@/server/services/klavis';
 import { MarketService } from '@/server/services/market';
 
@@ -62,8 +59,20 @@ function formatErrorForMetadata(error: unknown): Record<string, any> | undefined
  * This extends the public ExecAgentParams with server-side only options
  */
 interface InternalExecAgentParams extends ExecAgentParams {
+  /**
+   * Completion webhook configuration
+   * Persisted in Redis state, triggered via HTTP POST when the operation completes.
+   */
+  completionWebhook?: {
+    body?: Record<string, unknown>;
+    url: string;
+  };
   /** Cron job ID that triggered this execution (if trigger is 'cron') */
   cronJobId?: string;
+  /** Eval context for injecting environment prompts into system message */
+  evalContext?: EvalContext;
+  /** Maximum steps for the agent operation */
+  maxSteps?: number;
   /** Step lifecycle callbacks for operation tracking (server-side only) */
   stepCallbacks?: StepLifecycleCallbacks;
   /** Topic creation trigger source ('cron' | 'chat' | 'api') */
@@ -134,7 +143,10 @@ export class AiAgentService {
       stepCallbacks,
       trigger,
       cronJobId,
+      evalContext,
+      maxSteps,
       userInterventionConfig,
+      completionWebhook,
     } = params;
 
     // Validate that either agentId or slug is provided
@@ -323,40 +335,7 @@ export class AiAgentService {
     // Combine history messages with user message
     const allMessages = [...historyMessages, userMessage];
 
-    // 11. Process messages using Server ContextEngineering
-    const processedMessages = await serverMessagesEngine({
-      capabilities: {
-        isCanUseFC: isModelSupportToolUse,
-        isCanUseVideo: () => modelInfo?.abilities?.video ?? false,
-        isCanUseVision: () => modelInfo?.abilities?.vision ?? true,
-      },
-      enableHistoryCount: agentConfig.chatConfig?.enableHistoryCount ?? undefined,
-      historyCount: agentConfig.chatConfig?.historyCount ?? undefined,
-      knowledge: {
-        fileContents: agentConfig.files
-          ?.filter((f: { enabled?: boolean | null }) => f.enabled === true)
-          .map((f: { content?: string | null; id?: string; name?: string }) => ({
-            content: f.content ?? '',
-            fileId: f.id ?? '',
-            filename: f.name ?? '',
-          })),
-        knowledgeBases: agentConfig.knowledgeBases
-          ?.filter((kb: { enabled?: boolean | null }) => kb.enabled === true)
-          .map((kb: { id?: string; name?: string }) => ({
-            id: kb.id ?? '',
-            name: kb.name ?? '',
-          })),
-      },
-      messages: allMessages,
-      model,
-      provider,
-      systemRole: agentConfig.systemRole ?? undefined,
-      toolsConfig: {
-        tools: pluginIds,
-      },
-    });
-
-    log('execAgent: processed %d messages', processedMessages.length);
+    log('execAgent: prepared evalContext for executor');
 
     // 12. Generate operation ID: agt_{timestamp}_{agentId}_{topicId}_{random}
     const timestamp = Date.now();
@@ -376,7 +355,7 @@ export class AiAgentService {
       },
       phase: 'user_input' as const,
       session: {
-        messageCount: processedMessages.length,
+        messageCount: allMessages.length,
         sessionId: operationId,
         status: 'idle' as const,
         stepCount: 0,
@@ -390,7 +369,7 @@ export class AiAgentService {
       model,
       provider,
       tools?.length ?? 0,
-      processedMessages.length,
+      allMessages.length,
       Object.keys(toolManifestMap).length,
     );
 
@@ -407,8 +386,11 @@ export class AiAgentService {
           topicId,
         },
         autoStart,
+        completionWebhook,
+        evalContext,
         initialContext,
-        initialMessages: processedMessages,
+        initialMessages: allMessages,
+        maxSteps,
         modelRuntimeConfig: { model, provider },
         operationId,
         stepCallbacks,

@@ -47,6 +47,8 @@ export const SESSION_CHAT_URL = (agentId: string, mobile?: boolean) => {
   return `/agent/${agentId}`;
 };
 
+export const AGENT_PROFILE_URL = (agentId: string) => `/agent/${agentId}/profile`;
+
 export const GROUP_CHAT_URL = (groupId: string) => `/group/${groupId}`;
 
 export const LIBRARY_URL = (id: string) => urlJoin('/resource/library', id);
@@ -66,6 +68,6 @@ export const CHANGELOG_URL = urlJoin(OFFICIAL_SITE, 'changelog/versions');
 
 export const DOWNLOAD_URL = {
   android: 'https://play.google.com/store/apps/details?id=com.lobehub.app',
-  default: urlJoin(OFFICIAL_SITE, '/download'),
+  default: urlJoin(OFFICIAL_SITE, '/downloads'),
   ios: 'https://testflight.apple.com/join/2ZbjX4Qp',
 } as const;

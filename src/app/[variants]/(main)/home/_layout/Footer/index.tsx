@@ -1,8 +1,9 @@
 'use client';
 
 import { BRANDING_EMAIL, SOCIAL_URL } from '@lobechat/business-const';
-import { ActionIcon, DropdownMenu, Icon, type MenuProps } from '@lobehub/ui';
-import { Flexbox } from '@lobehub/ui';
+import { useAnalytics } from '@lobehub/analytics/react';
+import { type MenuProps } from '@lobehub/ui';
+import { ActionIcon, DropdownMenu, Flexbox, Icon } from '@lobehub/ui';
 import { DiscordIcon } from '@lobehub/ui/icons';
 import {
   Book,
@@ -14,9 +15,9 @@ import {
   Mail,
   Rocket,
 } from 'lucide-react';
-import { useAnalytics } from '@lobehub/analytics/react';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 
 import ChangelogModal from '@/components/ChangelogModal';
 import HighlightNotification from '@/components/HighlightNotification';
@@ -27,6 +28,8 @@ import { useFeedbackModal } from '@/hooks/useFeedbackModal';
 import { useGlobalStore } from '@/store/global';
 import { systemStatusSelectors } from '@/store/global/selectors/systemStatus';
 import { featureFlagsSelectors, useServerConfigStore } from '@/store/serverConfig';
+import { useUserStore } from '@/store/user';
+import { userGeneralSettingsSelectors } from '@/store/user/slices/settings/selectors';
 
 const PRODUCT_HUNT_NOTIFICATION = {
   actionHref: 'https://www.producthunt.com/products/lobehub?launch=lobehub',
@@ -40,6 +43,7 @@ const Footer = memo(() => {
   const { t } = useTranslation('common');
   const { analytics } = useAnalytics();
   const { hideGitHub } = useServerConfigStore(featureFlagsSelectors);
+  const isDevMode = useUserStore((s) => userGeneralSettingsSelectors.config(s).isDevMode);
   const [isLabsModalOpen, setIsLabsModalOpen] = useState(false);
   const [shouldLoadChangelog, setShouldLoadChangelog] = useState(false);
   const [isChangelogModalOpen, setIsChangelogModalOpen] = useState(false);
@@ -192,8 +196,8 @@ const Footer = memo(() => {
 
   return (
     <>
-      <Flexbox align={'center'} gap={2} horizontal justify={'space-between'} padding={8}>
-        <Flexbox align={'center'} flex={1} gap={2} horizontal>
+      <Flexbox horizontal align={'center'} gap={2} justify={'space-between'} padding={8}>
+        <Flexbox horizontal align={'center'} flex={1} gap={2}>
           <DropdownMenu items={helpMenuItems} placement="topLeft">
             <ActionIcon aria-label={t('userPanel.help')} icon={CircleHelp} size={16} />
           </DropdownMenu>
@@ -202,24 +206,29 @@ const Footer = memo(() => {
               <ActionIcon icon={Github} size={16} title={'GitHub'} />
             </a>
           )}
+          {isDevMode && (
+            <Link to="/eval">
+              <ActionIcon icon={FlaskConical} size={16} title="Evaluation Lab" />
+            </Link>
+          )}
         </Flexbox>
         <ThemeButton placement={'topCenter'} size={16} />
       </Flexbox>
-      <LabsModal onClose={handleCloseLabsModal} open={isLabsModalOpen} />
+      <LabsModal open={isLabsModalOpen} onClose={handleCloseLabsModal} />
       <ChangelogModal
-        onClose={handleCloseChangelogModal}
         open={isChangelogModalOpen}
         shouldLoad={shouldLoadChangelog}
+        onClose={handleCloseChangelogModal}
       />
       <HighlightNotification
         actionHref={PRODUCT_HUNT_NOTIFICATION.actionHref}
         actionLabel={t('productHunt.actionLabel')}
         description={t('productHunt.description')}
         image={PRODUCT_HUNT_NOTIFICATION.image}
-        onActionClick={handleProductHuntActionClick}
-        onClose={handleCloseProductHuntCard}
         open={isProductHuntCardOpen}
         title={t('productHunt.title')}
+        onActionClick={handleProductHuntActionClick}
+        onClose={handleCloseProductHuntCard}
       />
     </>
   );

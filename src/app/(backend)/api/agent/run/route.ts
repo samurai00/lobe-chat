@@ -1,5 +1,6 @@
 import debug from 'debug';
-import { type NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
 
 import { getServerDB } from '@/database/core/db-adaptor';
 import { AgentRuntimeCoordinator } from '@/server/modules/AgentRuntime';
@@ -28,7 +29,7 @@ async function verifyQStashSignature(request: NextRequest, rawBody: string): Pro
   }
 
   const { Receiver } = await import('@upstash/qstash');
-  const receiver = new Receiver({ currentSigningKey, nextSigningKey: nextSigningKey });
+  const receiver = new Receiver({ currentSigningKey, nextSigningKey });
 
   try {
     return await receiver.verify({ body: rawBody, signature });
@@ -81,7 +82,7 @@ export async function POST(request: NextRequest) {
     const serverDB = await getServerDB();
     const agentRuntimeService = new AgentRuntimeService(serverDB, metadata.userId);
 
-    // 使用 AgentRuntimeService 执行步骤
+    // Execute step using AgentRuntimeService
     const result = await agentRuntimeService.executeStep({
       approvedToolCall,
       context,
@@ -90,6 +91,20 @@ export async function POST(request: NextRequest) {
       rejectionReason,
       stepIndex,
     });
+
+    // Step is currently being executed by another instance — tell QStash to retry later
+    if (result.locked) {
+      log(`[${operationId}] Step ${stepIndex} locked by another instance, returning 429`);
+      return NextResponse.json(
+        { error: 'Step is currently being executed, retry later', operationId, stepIndex },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': '37', // 单位：秒
+          },
+        },
+      );
+    }
 
     const executionTime = Date.now() - startTime;
 
@@ -133,7 +148,7 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * 健康检查端点
+ * Health check endpoint
  */
 export async function GET() {
   try {

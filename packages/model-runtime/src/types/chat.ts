@@ -1,6 +1,6 @@
-import { ModelPerformance, ModelTokensUsage, ModelUsage } from '@lobechat/types';
+import type { ModelPerformance, ModelTokensUsage, ModelUsage } from '@lobechat/types';
 
-import { MessageToolCall, MessageToolCallChunk } from './toolsCalling';
+import type { MessageToolCall, MessageToolCallChunk } from './toolsCalling';
 
 export type LLMRoleType = 'user' | 'system' | 'assistant' | 'function' | 'tool';
 
@@ -61,6 +61,7 @@ export interface OpenAIChatMessage {
  */
 export interface ChatStreamPayload {
   apiMode?: 'chatCompletion' | 'responses';
+  effort?: 'low' | 'medium' | 'high' | 'max';
   /**
    * Enable context caching
    */
@@ -123,8 +124,8 @@ export interface ChatStreamPayload {
     summary?: string;
   };
   reasoning_effort?: 'minimal' | 'low' | 'medium' | 'high';
-  responseMode?: 'stream' | 'json';
   response_format?: ChatResponseFormat;
+  responseMode?: 'stream' | 'json';
   /**
    * @title Whether to enable streaming requests
    * @default true
@@ -143,13 +144,13 @@ export interface ChatStreamPayload {
    */
   thinking?: {
     budget_tokens: number;
-    type: 'enabled' | 'disabled';
+    type: 'enabled' | 'disabled' | 'adaptive';
   };
   thinkingBudget?: number;
   /**
    * Thinking level for Gemini models (e.g., gemini-3.0-pro)
    */
-  thinkingLevel?: 'low' | 'high';
+  thinkingLevel?: 'low' | 'medium' | 'high';
   tool_choice?: string;
   tools?: ChatCompletionTool[];
   /**
@@ -215,6 +216,7 @@ export interface ChatCompletionTool {
 }
 
 export interface OnFinishData {
+  error?: any;
   grounding?: any;
   speed?: ModelPerformance;
   text: string;
@@ -264,6 +266,8 @@ export interface ChatStreamCallbacks {
    * Used for models that return structured content with mixed text and images.
    */
   onContentPart?: (data: ContentPartData) => Promise<void> | void;
+  /** `onError`: Called when a stream error event is received from the provider. */
+  onError?: (error: any) => Promise<void> | void;
   /**
    * `onFinal`: Called once when the stream is closed with the final completion message.
    **/

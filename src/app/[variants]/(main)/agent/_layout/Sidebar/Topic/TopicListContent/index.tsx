@@ -30,7 +30,7 @@ const TopicListContent = memo(() => {
 
   const [topicDisplayMode] = useUserStore((s) => [preferenceSelectors.topicDisplayMode(s)]);
 
-  useFetchTopics({ excludeTriggers: ['cron'] });
+  useFetchTopics({ excludeTriggers: ['cron', 'eval'] });
 
   if (isInSearchMode) return <SearchResult />;
 
@@ -41,10 +41,10 @@ const TopicListContent = memo(() => {
     <>
       {topicLength === 0 && (
         <EmptyNavItem
+          title={t('actions.addNewTopic')}
           onClick={() => {
             router.push(urlJoin('/agent', agentId));
           }}
-          title={t('actions.addNewTopic')}
         />
       )}
       {topicDisplayMode === TopicDisplayMode.ByTime ? <ByTimeMode /> : <FlatMode />}
