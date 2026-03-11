@@ -1,6 +1,5 @@
 'use client';
 
-import { BUILTIN_AGENT_SLUGS } from '@lobechat/builtin-agents';
 import { ActionIcon, Flexbox } from '@lobehub/ui';
 import { Modal } from 'antd';
 import { cssVar, useTheme } from 'antd-style';
@@ -8,13 +7,10 @@ import { ArrowLeftIcon, DownloadIcon, InfoIcon } from 'lucide-react';
 import { memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import FileDetailComponent from '@/app/[variants]/(main)/resource/features/FileDetail';
-import { useResourceManagerStore } from '@/app/[variants]/(main)/resource/features/store';
-import Loading from '@/components/Loading/BrandTextLoading';
 import NavHeader from '@/features/NavHeader';
-import PageAgentProvider from '@/features/PageEditor/PageAgentProvider';
-import { useAgentStore } from '@/store/agent';
-import { builtinAgentSelectors } from '@/store/agent/selectors';
+import { PageAgentProvider } from '@/features/PageEditor/PageAgentProvider';
+import FileDetailComponent from '@/routes/(main)/resource/features/FileDetail';
+import { useResourceManagerStore } from '@/routes/(main)/resource/features/store';
 import { fileManagerSelectors, useFileStore } from '@/store/file';
 import { downloadFile } from '@/utils/client/downloadFile';
 
@@ -39,7 +35,12 @@ const FileEditorCanvas = memo<FileEditorProps>(({ onBack }) => {
         <Flexbox flex={1} height={'100%'}>
           <NavHeader
             left={
-              <Flexbox horizontal align={'center'} gap={12} style={{ minHeight: 32, minWidth: 0, overflow: 'hidden' }}>
+              <Flexbox
+                horizontal
+                align={'center'}
+                gap={12}
+                style={{ minHeight: 32, minWidth: 0, overflow: 'hidden' }}
+              >
                 <ActionIcon icon={ArrowLeftIcon} title={t('back')} onClick={onBack} />
                 <span
                   title={fileDetail?.name}
@@ -111,15 +112,8 @@ FileEditorCanvas.displayName = 'FileEditorCanvas';
  * So we depend on context, not props.
  */
 const FileEditor = memo<FileEditorProps>(({ onBack }) => {
-  const useInitBuiltinAgent = useAgentStore((s) => s.useInitBuiltinAgent);
-  const pageAgentId = useAgentStore(builtinAgentSelectors.pageAgentId);
-
-  useInitBuiltinAgent(BUILTIN_AGENT_SLUGS.pageAgent);
-
-  if (!pageAgentId) return <Loading debugId="FileEditor > PageAgent Init" />;
-
   return (
-    <PageAgentProvider pageAgentId={pageAgentId}>
+    <PageAgentProvider>
       <FileEditorCanvas onBack={onBack} />
     </PageAgentProvider>
   );

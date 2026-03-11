@@ -6,6 +6,7 @@ import {
   ChevronRight,
   FileText,
   Folder,
+  Library,
   MessageCircle,
   MessageSquare,
   Plug,
@@ -72,7 +73,7 @@ const SearchResults = memo<SearchResultsProps>(
           const fileUrl = result.knowledgeBaseId
             ? `/resource/library/${result.knowledgeBaseId}?file=${result.id}`
             : `/resource?file=${result.id}`;
-          console.log('[SearchResults] File navigation:', {
+          console.info('[SearchResults] File navigation:', {
             fileDetails: result,
             url: fileUrl,
           });
@@ -111,6 +112,10 @@ const SearchResults = memo<SearchResultsProps>(
           navigate(`/memory/preferences?preferenceId=${result.id}`);
           break;
         }
+        case 'knowledgeBase': {
+          navigate(`/resource/library/${result.id}`);
+          break;
+        }
       }
       onClose();
     };
@@ -147,6 +152,9 @@ const SearchResults = memo<SearchResultsProps>(
         case 'memory': {
           return <Brain size={16} />;
         }
+        case 'knowledgeBase': {
+          return <Library size={16} />;
+        }
       }
     };
 
@@ -181,6 +189,9 @@ const SearchResults = memo<SearchResultsProps>(
         }
         case 'memory': {
           return t('cmdk.search.memory');
+        }
+        case 'knowledgeBase': {
+          return t('cmdk.search.knowledgeBase');
         }
       }
     };
@@ -232,6 +243,7 @@ const SearchResults = memo<SearchResultsProps>(
     const memoryResults = results.filter((r) => r.type === 'memory');
     const mcpResults = results.filter((r) => r.type === 'mcp');
     const pluginResults = results.filter((r) => r.type === 'plugin');
+    const knowledgeBaseResults = results.filter((r) => r.type === 'knowledgeBase');
     const assistantResults = results.filter((r) => r.type === 'communityAgent');
 
     // Don't render anything if no results and not loading
@@ -268,8 +280,8 @@ const SearchResults = memo<SearchResultsProps>(
 
       return (
         <CommandItem
-          description={subtitle}
           forceMount
+          description={subtitle}
           icon={getIcon(result.type)}
           key={result.id}
           title={titleWithPrefix}
@@ -313,70 +325,77 @@ const SearchResults = memo<SearchResultsProps>(
       <>
         {/* Render search results grouped by type without headers */}
         {messageResults.length > 0 && (
-          <Command.Group>
+          <Command.Group forceMount>
             {messageResults.map((result) => renderResultItem(result))}
             {renderSearchMore('message', messageResults.length)}
           </Command.Group>
         )}
 
         {agentResults.length > 0 && (
-          <Command.Group>
+          <Command.Group forceMount>
             {agentResults.map((result) => renderResultItem(result))}
             {renderSearchMore('agent', agentResults.length)}
           </Command.Group>
         )}
 
         {topicResults.length > 0 && (
-          <Command.Group>
+          <Command.Group forceMount>
             {topicResults.map((result) => renderResultItem(result))}
             {renderSearchMore('topic', topicResults.length)}
           </Command.Group>
         )}
 
         {pageResults.length > 0 && (
-          <Command.Group>
+          <Command.Group forceMount>
             {pageResults.map((result) => renderResultItem(result))}
             {renderSearchMore('page', pageResults.length)}
           </Command.Group>
         )}
 
         {memoryResults.length > 0 && (
-          <Command.Group>
+          <Command.Group forceMount>
             {memoryResults.map((result) => renderResultItem(result))}
             {renderSearchMore('memory', memoryResults.length)}
           </Command.Group>
         )}
 
         {fileResults.length > 0 && (
-          <Command.Group>
+          <Command.Group forceMount>
             {fileResults.map((result) => renderResultItem(result))}
             {renderSearchMore('file', fileResults.length)}
           </Command.Group>
         )}
 
         {folderResults.length > 0 && (
-          <Command.Group>
+          <Command.Group forceMount>
             {folderResults.map((result) => renderResultItem(result))}
             {renderSearchMore('folder', folderResults.length)}
           </Command.Group>
         )}
 
+        {knowledgeBaseResults.length > 0 && (
+          <Command.Group forceMount>
+            {knowledgeBaseResults.map((result) => renderResultItem(result))}
+            {renderSearchMore('knowledgeBase', knowledgeBaseResults.length)}
+          </Command.Group>
+        )}
+
         {mcpResults.length > 0 && (
-          <Command.Group>
+          <Command.Group forceMount>
             {mcpResults.map((result) => renderResultItem(result))}
             {renderSearchMore('mcp', mcpResults.length)}
           </Command.Group>
         )}
 
         {pluginResults.length > 0 && (
-          <Command.Group>
+          <Command.Group forceMount>
             {pluginResults.map((result) => renderResultItem(result))}
             {renderSearchMore('plugin', pluginResults.length)}
           </Command.Group>
         )}
 
         {assistantResults.length > 0 && (
-          <Command.Group>
+          <Command.Group forceMount>
             {assistantResults.map((result) => renderResultItem(result))}
             {renderSearchMore('communityAgent', assistantResults.length)}
           </Command.Group>
@@ -384,7 +403,7 @@ const SearchResults = memo<SearchResultsProps>(
 
         {/* Show loading skeleton below existing results */}
         {isLoading && (
-          <Command.Group>
+          <Command.Group forceMount>
             {[1, 2, 3].map((i) => (
               <Command.Item
                 disabled

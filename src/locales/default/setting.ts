@@ -114,7 +114,6 @@ export default {
   'agentInfoDescription.basic.name': 'Name',
   'agentInfoDescription.basic.tags': 'Tags',
   'agentInfoDescription.basic.title': 'Agent info',
-
   'agentInfoDescription.chat.enableHistoryCount': 'Enable Message History Count',
   'agentInfoDescription.chat.historyCount': 'Message History Count',
   'agentInfoDescription.chat.no': 'No',
@@ -133,7 +132,49 @@ export default {
   'agentInfoDescription.role.systemRole': 'Agent Profile',
   'agentInfoDescription.role.title': 'Agent Profile',
   'agentInfoDescription.value.unset': 'Not Set',
+
   'agentInfoDescription.value.untitled': 'Untitled Agent',
+  'agentSkillDetail.addedAt': 'Added',
+  'agentSkillDetail.publishedAt': 'Published',
+  'agentSkillDetail.repository': 'GitHub Repository',
+  'agentSkillDetail.skillContent': 'Skill Content',
+  'agentSkillDetail.sourceUrl': 'Skill Import Source',
+  'agentSkillDetail.updatedAt': 'Updated',
+  'agentSkillEdit.descriptionDesc':
+    'A brief summary of what the skill does, helping the agent understand when to use it',
+  'agentSkillEdit.fileReadonly':
+    'This file is read-only. Only skill description and instructions can be edited.',
+  'agentSkillEdit.instructions': 'Instructions',
+  'agentSkillEdit.instructionsDesc':
+    'The core instructions in Markdown that define the skill behavior and workflow',
+  'agentSkillEdit.instructionsPlaceholder': 'Enter the skill instructions in Markdown format...',
+  'agentSkillEdit.nameDesc': 'The unique identifier for this skill, not editable after creation',
+  'agentSkillEdit.saveSuccess': 'Skill updated successfully',
+  'agentSkillEdit.title': 'Skill Settings',
+  'agentSkillItem.deleteConfirm.desc':
+    'Are you sure you want to delete the agent skill "{{name}}"? This action cannot be undone.',
+  'agentSkillItem.deleteConfirm.title': 'Delete Agent Skill',
+  'agentSkillModal.content': 'Skill Content',
+  'agentSkillModal.contentPlaceholder': 'Enter skill content in Markdown format...',
+  'agentSkillModal.description': 'Description',
+  'agentSkillModal.descriptionPlaceholder': 'Briefly describe this skill',
+  'agentSkillModal.github.desc': 'Import skills directly from a public GitHub repository.',
+  'agentSkillModal.github.title': 'Import from GitHub',
+  'agentSkillModal.github.urlPlaceholder': 'https://github.com/username/repo',
+  'agentSkillModal.importError': 'Import failed: {{error}}',
+  'agentSkillModal.importSuccess': 'Agent Skill imported successfully',
+  'agentSkillModal.upload.desc': 'Upload a local .zip or .skill file to install.',
+  'agentSkillModal.upload.dragText': 'Drag and drop or click to upload',
+  'agentSkillModal.upload.requirementSkillMd':
+    'SKILL.md contains skill name and description in YAML format',
+  'agentSkillModal.upload.requirementZip': '.zip or .skill file with SKILL.md in root directory',
+  'agentSkillModal.upload.requirements': 'File Requirements',
+  'agentSkillModal.upload.title': 'Upload Skill',
+  'agentSkillModal.upload.uploading': 'Uploading...',
+  'agentSkillModal.url.desc': 'Import a skill by providing a direct link to a SKILL.md file.',
+  'agentSkillModal.url.title': 'Import from URL',
+  'agentSkillModal.url.urlPlaceholder': 'https://example.com/path/to/SKILL.md',
+  'agentSkillTag': 'Agent Skill',
   'agentTab.chat': 'Chat Preferences',
   'agentTab.meta': 'Agent info',
   'agentTab.modal': 'Model Settings',
@@ -177,6 +218,7 @@ export default {
   'header.sessionDesc': 'Agent Profile and session preferences',
   'header.sessionWithName': 'Session Settings · {{name}}',
   'header.title': 'Settings',
+  'hotkey.clearBinding': 'Clear binding',
   'hotkey.conflicts': 'Conflicts with existing hotkeys',
   'hotkey.errors.CONFLICT': 'Hotkey conflict: This hotkey is already assigned to another function',
   'hotkey.errors.INVALID_FORMAT':
@@ -307,6 +349,14 @@ export default {
   'marketPublish.validation.emptySystemRole': 'Cannot publish: System Role is required',
   'marketPublish.validation.underReview':
     'Your new version is currently under review. Please wait for approval before publishing a new version.',
+  'memory.effort.desc': 'Control how aggressively the AI retrieves and updates memory.',
+  'memory.effort.high': 'High — Proactive retrieval and updates',
+  'memory.effort.level.high': 'High',
+  'memory.effort.level.low': 'Low',
+  'memory.effort.level.medium': 'Medium',
+  'memory.effort.low': 'Low — Minimal memory operations',
+  'memory.effort.medium': 'Medium — Balanced behavior',
+  'memory.effort.title': 'Aggressiveness',
   'memory.enabled.desc':
     'Allow LobeHub to extract preferences and info from conversations and use them later. You can view, edit, or clear memory anytime.',
   'memory.enabled.title': 'Enable Memory',
@@ -744,7 +794,21 @@ When I am ___, I need ___
   'systemAgent.translation.modelDesc': 'Specify the model used for translation',
   'systemAgent.translation.title': 'Message Translation Agent',
   'tab.about': 'About',
-  'tab.addCustomSkill': 'Add custom skill',
+  'tab.addAgentSkill': 'Add Agent Skill',
+  'tab.beta': 'Beta',
+  'tab.beta.updateChannel.canary': 'Canary',
+  'tab.beta.updateChannel.canaryDesc':
+    'Triggered on every PR merge, multiple builds per day. Most unstable.',
+  'tab.beta.updateChannel.desc':
+    'By default, get notifications for stable updates. Nightly and Canary channels receive pre-release builds that may be unstable for production work.',
+  'tab.beta.updateChannel.nightly': 'Nightly',
+  'tab.beta.updateChannel.nightlyDesc': 'Automated daily builds with the latest changes.',
+  'tab.beta.updateChannel.stable': 'Stable',
+  'tab.beta.updateChannel.stableDesc': 'Production-ready releases.',
+  'tab.beta.updateChannel.title': 'Update Channel',
+  'tab.addCustomMcp': 'Add Custom MCP Skill',
+  'tab.addCustomMcp.desc': 'Manually configure a custom MCP server',
+  'tab.addCustomSkill': 'Add',
   'tab.agent': 'Agent Service',
   'tab.all': 'All',
   'tab.apikey': 'API Key Management',
@@ -753,7 +817,13 @@ When I am ___, I need ___
   'tab.experiment': 'Experiment',
   'tab.hotkey': 'Hotkeys',
   'tab.image': 'Image Generation Service',
+  'tab.importFromGithub': 'Import from GitHub',
+  'tab.importFromGithub.desc': 'Import from a public GitHub repository',
+  'tab.importFromUrl': 'Import from URL',
+  'tab.importFromUrl.desc': 'Import via a direct link to SKILL.md',
   'tab.llm': 'Language Model',
+  'tab.manualFill': 'Manually Fill In',
+  'tab.manualFill.desc': 'Configure a custom MCP skill manually',
   'tab.memory': 'Memory',
   'tab.profile': 'My Account',
   'tab.provider': 'AI Service Provider',
@@ -770,6 +840,8 @@ When I am ___, I need ___
   'tab.sync': 'Cloud Sync',
   'tab.systemTools': 'System Tools',
   'tab.tts': 'Text-to-Speech',
+  'tab.uploadZip': 'Upload Zip',
+  'tab.uploadZip.desc': 'Upload a local .zip or .skill file',
   'tab.usage': 'Usage Statistics',
   'tools.add': 'Add Skill',
   'tools.builtins.groupName': 'Built-ins',
@@ -780,6 +852,11 @@ When I am ___, I need ___
   'tools.builtins.lobe-artifacts.readme':
     'Generate and live-preview interactive UI components, data visualizations, charts, SVG graphics, and web applications. Create rich visual content that users can interact with directly.',
   'tools.builtins.lobe-artifacts.title': 'Artifacts',
+  'tools.builtins.lobe-calculator.title': 'Calculator',
+  'tools.builtins.lobe-calculator.description':
+    'Perform mathematical calculations, solve equations, and work with symbolic expressions',
+  'tools.builtins.lobe-calculator.readme':
+    'Advanced mathematical calculator supporting basic arithmetic, algebraic equations, calculus operations, and symbolic math. Includes base conversion, equation solving, differentiation, integration, and more.',
   'tools.builtins.lobe-cloud-sandbox.description':
     'Execute code, run commands, and manage files in a secure cloud environment',
   'tools.builtins.lobe-cloud-sandbox.readme':
@@ -794,8 +871,7 @@ When I am ___, I need ___
   'tools.builtins.lobe-local-system.readme':
     'Access your local filesystem on desktop. Read, write, search, and organize files. Execute shell commands with background task support and grep content with regex patterns.',
   'tools.builtins.lobe-local-system.title': 'Local System',
-  'tools.builtins.lobe-notebook.description':
-    'Create and manage documents in the topic notebook',
+  'tools.builtins.lobe-notebook.description': 'Create and manage documents in the topic notebook',
   'tools.builtins.lobe-notebook.readme':
     'Create and manage persistent documents within conversation topics. Save notes, reports, articles, and markdown content that stays accessible across sessions.',
   'tools.builtins.lobe-notebook.title': 'Notebook',

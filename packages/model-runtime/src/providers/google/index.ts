@@ -9,7 +9,7 @@ import debug from 'debug';
 
 import { type LobeRuntimeAI } from '../../core/BaseAI';
 import { buildGoogleMessages, buildGoogleTools } from '../../core/contextBuilders/google';
-import { GoogleGenerativeAIStream, VertexAIStream } from '../../core/streams';
+import { GoogleGenerativeAIStream } from '../../core/streams';
 import { LOBE_ERROR_KEY } from '../../core/streams/google';
 import {
   type ChatCompletionTool,
@@ -40,7 +40,12 @@ const modelsWithModalities = new Set([
   'gemini-2.5-flash-image-preview',
   'gemini-2.5-flash-image',
   'gemini-3-pro-image-preview',
+  'gemini-3.1-flash-image-preview',
   'nano-banana-pro-preview',
+]);
+
+const modelsWithImageSearch = new Set([
+  'gemini-3.1-flash-image-preview',
 ]);
 
 const modelsDisableInstuction = new Set([
@@ -166,7 +171,7 @@ export class LobeGoogleAI implements LobeRuntimeAI {
       const config: GenerateContentConfig = {
         abortSignal: originalSignal,
         imageConfig:
-          modelsWithModalities.has(model) && imageAspectRatio
+          modelsWithModalities.has(model) && imageAspectRatio && imageAspectRatio !== 'auto'
             ? {
                 aspectRatio: imageAspectRatio,
                 imageSize: imageResolution,
@@ -197,7 +202,9 @@ export class LobeGoogleAI implements LobeRuntimeAI {
         systemInstruction: modelsDisableInstuction.has(model)
           ? undefined
           : (payload.system as string),
-        temperature: payload.temperature,
+        temperature: modelsWithModalities.has(model)
+          ? Math.min(payload.temperature ?? 1, 1)
+          : payload.temperature,
         thinkingConfig:
           modelsDisableInstuction.has(model) || model.toLowerCase().includes('learnlm')
             ? undefined
@@ -230,8 +237,7 @@ export class LobeGoogleAI implements LobeRuntimeAI {
       // Convert the response into a friendly text-stream
       const pricing = await getModelPricing(model, this.provider);
 
-      const Stream = this.isVertexAi ? VertexAIStream : GoogleGenerativeAIStream;
-      const stream = Stream(prod, {
+      const stream = GoogleGenerativeAIStream(prod, {
         callbacks: options?.callback,
         inputStartAt,
         payload: { model, pricing, provider: this.provider },
@@ -399,8 +405,11 @@ export class LobeGoogleAI implements LobeRuntimeAI {
 
   async models(options?: { signal?: AbortSignal }) {
     try {
-      const url = `${this.baseURL}/v1beta/models?key=${this.apiKey}`;
+      const url = `${this.baseURL}/v1beta/models`;
       const response = await fetch(url, {
+        headers: {
+          'x-goog-api-key': this.apiKey!,
+        },
         method: 'GET',
         signal: options?.signal,
       });
@@ -458,15 +467,24 @@ export class LobeGoogleAI implements LobeRuntimeAI {
       return buildGoogleTools(tools);
     }
 
+    // Build GoogleSearch tool config with optional image search support
+    const googleSearchTool = hasSearch
+      ? {
+          googleSearch: modelsWithImageSearch.has(payload?.model ?? '')
+            ? { searchTypes: { imageSearch: {}, webSearch: {} } }
+            : {},
+        }
+      : undefined;
+
     // Build and return search-related tools (search tools cannot be used with FunctionCall simultaneously)
     if (hasUrlContext && hasSearch) {
-      return [{ urlContext: {} }, { googleSearch: {} }];
+      return [{ urlContext: {} }, googleSearchTool!];
     }
     if (hasUrlContext) {
       return [{ urlContext: {} }];
     }
     if (hasSearch) {
-      return [{ googleSearch: {} }];
+      return [googleSearchTool!];
     }
 
     // Finally consider function declarations

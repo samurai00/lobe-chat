@@ -17,28 +17,31 @@ export const createHomeSlice = (set: Setter, get: () => UserMemoryStore, _api?: 
   new HomeActionImpl(set, get, _api);
 
 export class HomeActionImpl {
-  readonly #get: () => UserMemoryStore;
   readonly #set: Setter;
 
   constructor(set: Setter, get: () => UserMemoryStore, _api?: unknown) {
     void _api;
     this.#set = set;
-    this.#get = get;
+    void get;
   }
 
-  useFetchPersona = (): SWRResponse<PersonaData | null> => {
-    return useClientDataSWR(FETCH_PERSONA_KEY, () => userMemoryService.getPersona(), {
-      onSuccess: (data: PersonaData | null | undefined) => {
-        this.#set(
-          {
-            persona: data ?? undefined,
-            personaInit: true,
-          },
-          false,
-          n('useFetchPersona/onSuccess'),
-        );
+  useFetchPersona = (isLogin = true): SWRResponse<PersonaData | null> => {
+    return useClientDataSWR(
+      isLogin ? FETCH_PERSONA_KEY : null,
+      () => userMemoryService.getPersona(),
+      {
+        onSuccess: (data: PersonaData | null | undefined) => {
+          this.#set(
+            {
+              persona: data ?? undefined,
+              personaInit: true,
+            },
+            false,
+            n('useFetchPersona/onSuccess'),
+          );
+        },
       },
-    });
+    );
   };
 
   useFetchTags = (): SWRResponse<QueryIdentityRolesResult> => {

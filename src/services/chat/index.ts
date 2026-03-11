@@ -133,6 +133,7 @@ class ChatService {
       chatConfig,
       enabledManifests = [],
       enabledToolIds = [],
+      plugins,
       tools,
     } = resolvedAgentConfig;
 
@@ -158,11 +159,12 @@ class ChatService {
       const activeAgentId = getChatStoreState().activeAgentId || '';
       const baseContext =
         agentByIdSelectors.getAgentBuilderContextById(activeAgentId)(getAgentStoreState());
+      const activeAgentConfig =
+        agentSelectors.getAgentConfigById(activeAgentId)(getAgentStoreState());
 
       // Build official tools list (builtin tools + Klavis tools)
       const toolState = getToolStoreState();
-      const enabledPlugins =
-        agentSelectors.getAgentConfigById(activeAgentId)(getAgentStoreState()).plugins || [];
+      const enabledPlugins = activeAgentConfig?.plugins || [];
 
       const officialTools: OfficialToolItem[] = [];
 
@@ -251,6 +253,7 @@ class ChatService {
       manifests: enabledManifests,
       messages,
       model: payload.model,
+      plugins,
       provider: payload.provider!,
       sessionId: options?.trace?.sessionId,
       stepContext: options?.stepContext,
@@ -421,7 +424,7 @@ class ChatService {
 
     return fetchSSE(API_ENDPOINTS.chat(provider), {
       body: JSON.stringify(payload),
-      fetcher: fetcher,
+      fetcher,
       headers,
       method: 'POST',
       onAbort: options?.onAbort,
