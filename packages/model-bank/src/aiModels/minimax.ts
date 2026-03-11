@@ -31,6 +31,28 @@ const minimaxChatModels: AIChatModelCard[] = [
       reasoning: true,
     },
     contextWindowTokens: 204_800,
+    description: 'M2.5 Highspeed: Same performance, faster and more agile (approx. 100 tps).',
+    displayName: 'MiniMax M2.5 Highspeed',
+    id: 'MiniMax-M2.5-highspeed',
+    maxOutput: 131_072,
+    pricing: {
+      currency: 'CNY',
+      units: [
+        { name: 'textInput_cacheRead', rate: 0.21, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheWrite', rate: 2.625, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput', rate: 4.2, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 16.8, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-02-12',
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: true,
+      reasoning: true,
+    },
+    contextWindowTokens: 204_800,
     description: 'M2.5 Lightning: Same performance, faster and more agile (approx. 100 tps).',
     displayName: 'MiniMax M2.5 Lightning',
     id: 'MiniMax-M2.5-Lightning',
@@ -40,7 +62,7 @@ const minimaxChatModels: AIChatModelCard[] = [
       units: [
         { name: 'textInput_cacheRead', rate: 0.21, strategy: 'fixed', unit: 'millionTokens' },
         { name: 'textInput_cacheWrite', rate: 2.625, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textInput', rate: 2.1, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput', rate: 4.2, strategy: 'fixed', unit: 'millionTokens' },
         { name: 'textOutput', rate: 16.8, strategy: 'fixed', unit: 'millionTokens' },
       ],
     },
